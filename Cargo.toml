@@ -7,3 +7,5 @@ edition = "2021"
 
 [dependencies]
 bitcoin = "0.31.0"
+jsonrpsee = { version = "0.20", features = ["client"] }
+tokio = "1.34"

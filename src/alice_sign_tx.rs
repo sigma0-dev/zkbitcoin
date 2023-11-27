@@ -6,6 +6,9 @@ use bitcoin::{
     Amount, PubkeyHash, ScriptBuf, Transaction, TxOut,
 };
 
+const JSON_RPC_ENDPOINT: &str = "http://146.190.33.39:18331";
+const JSON_RPC_AUTH: &str = "root:hellohello";
+
 // TODO: perhaps this will help https://github.com/rust-bitcoin/rust-bitcoin/issues/294
 
 pub fn generate_transaction(vk: &[u8], satoshi_amount: u64) {
@@ -50,4 +53,31 @@ pub fn generate_transaction(vk: &[u8], satoshi_amount: u64) {
 
     // 4. broadcast transaction
     // sendrawtransaction
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use jsonrpsee::core::client::ClientT;
+    use jsonrpsee::http_client::HttpClientBuilder;
+    use jsonrpsee::rpc_params;
+    use jsonrpsee::ws_client::HeaderMap;
+
+    #[tokio::test]
+    async fn test_json_rpc() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "Authorization",
+            "Basic cm9vdDpoZWxsb2hlbGxv".parse().unwrap(),
+        );
+        let client = HttpClientBuilder::default()
+            .set_headers(headers)
+            .build(JSON_RPC_ENDPOINT)
+            .unwrap();
+
+        let params = rpc_params![1_u64, 2, 3];
+        let response: Result<String, _> = client.request("say_hello", params).await;
+
+        println!("{:?}", response);
+    }
 }
