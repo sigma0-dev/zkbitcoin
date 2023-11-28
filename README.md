@@ -35,5 +35,5 @@ I'm running one on digitalocean at [146.190.33.39](http://146.190.33.39)
 You can query it with:
 
 ```console
-curl --user root:hellohello --data-binary '{"jsonrpc": "1.0", "id": "curltest", "method": "getblock", "params": []}' -H 'content-type: text/plain;' http://146.190.33.39:18331
+curl --user root:hellohello --data-binary '{"jsonrpc": "1.0", "id": "curltest", "method": "getblockchaininfo", "params": []}' -H 'content-type: text/plain;' http://146.190.33.39:18331
 ```

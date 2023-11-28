@@ -57,27 +57,55 @@ pub fn generate_transaction(vk: &[u8], satoshi_amount: u64) {
 
 #[cfg(test)]
 mod tests {
+    use reqwest::{
+        header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE},
+        Client,
+    };
+    use serde::Serialize;
+    use std::time::Duration;
+
     use super::*;
-    use jsonrpsee::core::client::ClientT;
-    use jsonrpsee::http_client::HttpClientBuilder;
-    use jsonrpsee::rpc_params;
-    use jsonrpsee::ws_client::{HeaderMap, HeaderValue};
+
+    #[derive(Serialize)]
+    struct Request {
+        jsonrpc: &'static str,
+        id: String,
+        method: String,
+        params: Vec<String>,
+    }
 
     #[tokio::test]
     async fn test_json_rpc() {
+        env_logger::init();
+
+        let request = Request {
+            jsonrpc: "1.0",
+            id: "curltest".to_string(),
+            method: "getblockchaininfo".to_string(),
+            params: vec![],
+        };
+        let body = serde_json::to_string(&request).unwrap();
+
         let mut headers = HeaderMap::new();
         headers.insert(
-            "Authorization",
+            AUTHORIZATION,
             HeaderValue::from_static("Basic cm9vdDpoZWxsb2hlbGxv"),
         );
-        let client = HttpClientBuilder::default()
-            .set_headers(headers)
-            .build(JSON_RPC_ENDPOINT)
+        let client = Client::builder()
+            .default_headers(headers)
+            .timeout(Duration::from_secs(10))
+            .build()
             .unwrap();
 
-        let params = rpc_params![1_u64, 2, 3];
-        let response: Result<String, _> = client.request("say_hello", params).await;
+        let response = client
+            .post(JSON_RPC_ENDPOINT)
+            .header(CONTENT_TYPE, "application/json")
+            .body(body)
+            .send()
+            .await
+            .unwrap();
+        println!("status_code: {:?}", &response.status().as_u16());
 
-        println!("{:?}", response);
+        println!("{:?}", response.text().await);
     }
 }

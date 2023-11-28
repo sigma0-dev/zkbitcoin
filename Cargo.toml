@@ -7,5 +7,8 @@ edition = "2021"
 
 [dependencies]
 bitcoin = "0.31.0"
-jsonrpsee = { version = "0.20", features = ["client"] }
-tokio = "1.34"
+reqwest = "0.11"
+tokio = { version = "1.34", features = ["macros"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0" }
+env_logger = "0.10.1"
