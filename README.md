@@ -1,5 +1,11 @@
 # zkBitcoin
 
+## Set up Bitcoin CLI
+
+```shell
+brew install bitcoin
+```
+
 ## Set up bitcoind
 
 Both users and nodes need access to Bitcoin.
@@ -43,19 +49,19 @@ curl --user root:hellohello --data-binary '{"jsonrpc": "1.0", "id": "curltest", 
 I created a wallet called "mywallet" via:
 
 ```console
-./bin/bitcoin-cli -testnet -rpcport=18332 -rpcuser=root -rpcpassword=hellohello createwallet mywallet
+bitcoin-cli -testnet -rpcconnect=146.190.33.39 -rpcport=18331 -rpcuser=root -rpcpassword=hellohello createwallet mywallet
 ```
 
 you can get information about wallets in general using:
 
 ```console
-./bin/bitcoin-cli -testnet -rpcport=18332 -rpcuser=root -rpcpassword=hellohello getwalletinfo
+bitcoin-cli -testnet -rpcconnect=146.190.33.39 -rpcport=18331 -rpcuser=root -rpcpassword=hellohello getwalletinfo
 ```
 
 and obtain a new public key via:
 
 ```console
-./bin/bitcoin-cli -testnet -rpcport=18332 -rpcuser=root -rpcpassword=hellohello getnewaddress
+bitcoin-cli -testnet -rpcconnect=146.190.33.39 -rpcport=18331 -rpcuser=root -rpcpassword=hellohello getnewaddress
 ```
 
 I believe we can switch wallets by using the `loadwallet` command.
