@@ -44,24 +44,30 @@ You can query it with:
 curl --user root:hellohello --data-binary '{"jsonrpc": "1.0", "id": "curltest", "method": "getblockchaininfo", "params": []}' -H 'content-type: text/plain;' http://146.190.33.39:18331
 ```
 
-### Our wallet
+### Our wallets
 
-I created a wallet called "mywallet" via:
+I created a wallet called `mywallet` via:
 
-```console
+```shell
 bitcoin-cli -testnet -rpcconnect=146.190.33.39 -rpcport=18331 -rpcuser=root -rpcpassword=hellohello createwallet mywallet
 ```
 
-you can get information about wallets in general using:
+Created another wallet `wallet2`:
 
-```console
-bitcoin-cli -testnet -rpcconnect=146.190.33.39 -rpcport=18331 -rpcuser=root -rpcpassword=hellohello getwalletinfo
+```shell
+bitcoin-cli -testnet -rpcconnect=146.190.33.39 -rpcport=18331 -rpcuser=root -rpcpassword=hellohello createwallet wallet2
 ```
 
-and obtain a new public key via:
+You can get information about a wallet using:
 
-```console
-bitcoin-cli -testnet -rpcconnect=146.190.33.39 -rpcport=18331 -rpcuser=root -rpcpassword=hellohello getnewaddress
+```shell
+bitcoin-cli -testnet -rpcconnect=146.190.33.39 -rpcport=18331 -rpcuser=root -rpcpassword=hellohello -rpcwallet=mywallet getwalletinfo
+```
+
+Obtain a new public key via:
+
+```shell
+bitcoin-cli -testnet -rpcconnect=146.190.33.39 -rpcport=18331 -rpcuser=root -rpcpassword=hellohello -rpcwallet=mywallet getnewaddress
 ```
 
 I believe we can switch wallets by using the `loadwallet` command.
