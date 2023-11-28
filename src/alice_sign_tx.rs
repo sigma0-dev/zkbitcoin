@@ -20,13 +20,13 @@ const JSON_RPC_AUTH: &str = "root:hellohello";
 struct Request {
     jsonrpc: &'static str,
     id: String,
-    method: String,
+    method: &'static str,
     params: Vec<String>,
 }
 
 // TODO: perhaps this will help https://github.com/rust-bitcoin/rust-bitcoin/issues/294
 
-pub fn generate_transaction(vk: &[u8], satoshi_amount: u64) {
+pub async fn generate_transaction(vk: &[u8; 32], satoshi_amount: u64) -> Result<(), &'static str> {
     // TODO: replace with our actual public key hash
     let zkbitcoin_pubkey_hash: PubkeyHash = PubkeyHash::from_raw_hash(hash160::Hash::all_zeros());
 
@@ -42,7 +42,7 @@ pub fn generate_transaction(vk: &[u8], satoshi_amount: u64) {
     // METADATA
     .push_opcode(OP_RETURN)
     // VK
-    .push_slice(&[0, 0, 0, 0])
+    .push_slice(&vk)
     // TODO: public input
     .push_slice(&[0, 0, 0, 0])
     // to script
@@ -60,20 +60,29 @@ pub fn generate_transaction(vk: &[u8], satoshi_amount: u64) {
         input: vec![],
         output: vec![output],
     };
+    let tx_hex_str = hex::encode(&serde_json::to_string(&tx).unwrap());
 
     // 2. fund transaction
     // https://developer.bitcoin.org/reference/rpc/fundrawtransaction.html
+    let response = json_rpc_request("fundrawtransaction", vec![tx_hex_str])
+        .await
+        .map_err(|_| "TODO: real error")?;
+    println!("{:?}", response);
 
     // 3. sign transaction
+    // signrawtransactionwithwallet
 
     // 4. broadcast transaction
     // sendrawtransaction
+
+    //
+    Ok(())
 }
 
 /// Implements a JSON RPC request to the bitcoind node.
 /// Following the [JSON RPC 1.0 spec](https://www.jsonrpc.org/specification_v1).
 pub async fn json_rpc_request(
-    method: String,
+    method: &'static str,
     params: Vec<String>,
 ) -> Result<String, reqwest::Error> {
     let request = Request {
@@ -117,9 +126,7 @@ mod tests {
     async fn test_json_rpc() {
         env_logger::init();
 
-        let response = json_rpc_request("getblockchaininfo".to_string(), vec![])
-            .await
-            .unwrap();
+        let response = json_rpc_request("getblockchaininfo", vec![]).await.unwrap();
 
         println!("{:?}", response);
     }
