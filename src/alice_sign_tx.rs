@@ -89,12 +89,9 @@ pub async fn generate_transaction(vk: &[u8; 32], satoshi_amount: u64) -> Result<
 
     // 2. fund transaction
     // https://developer.bitcoin.org/reference/rpc/fundrawtransaction.html
-    let response = json_rpc_request(
-        "fundrawtransaction",
-        vec![tx_hex_str, "{}".to_string(), "false".to_string()],
-    )
-    .await
-    .map_err(|_| "TODO: real error")?;
+    let response = json_rpc_request("fundrawtransaction", vec![tx_hex_str])
+        .await
+        .map_err(|_| "TODO: real error")?;
     println!("our own way: {:?}", response);
 
     // try the same thing with bitcoin rpc:
