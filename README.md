@@ -37,3 +37,28 @@ You can query it with:
 ```console
 curl --user root:hellohello --data-binary '{"jsonrpc": "1.0", "id": "curltest", "method": "getblockchaininfo", "params": []}' -H 'content-type: text/plain;' http://146.190.33.39:18331
 ```
+
+### Our wallet
+
+I created a wallet called "mywallet" via:
+
+```console
+./bin/bitcoin-cli -testnet -rpcport=18332 -rpcuser=root -rpcpassword=hellohello createwallet mywallet
+```
+
+you can get information about wallets in general using:
+
+```console
+./bin/bitcoin-cli -testnet -rpcport=18332 -rpcuser=root -rpcpassword=hellohello getwalletinfo
+```
+
+and obtain a new public key via:
+
+```console
+./bin/bitcoin-cli -testnet -rpcport=18332 -rpcuser=root -rpcpassword=hellohello getnewaddress
+```
+
+I believe we can switch wallets by using the `loadwallet` command.
+
+* `tb1q5pxn428emp73saglk7ula0yx5j7ehegu6ud6ad` <-- I put some bitcoins in there from [this faucet](https://bitcoinfaucet.uo1.net/send.php) (you can see the wallet on [this explorer](https://blockstream.info/testnet/address/tb1q5pxn428emp73saglk7ula0yx5j7ehegu6ud6ad))
+* `tb1q6nkpv2j9lxrm6h3w4skrny3thswgdcca8cx9k6`

@@ -60,6 +60,11 @@ pub async fn generate_transaction(vk: &[u8; 32], satoshi_amount: u64) -> Result<
         input: vec![],
         output: vec![output],
     };
+
+    // we now have to encode the transaction as a hex string
+    // bitcoind has an API to decode it: https://developer.bitcoin.org/reference/rpc/decoderawtransaction.html
+    // with implementation here: https://github.com/bitcoin/bitcoin/blob/master/src/rpc/rawtransaction.cpp#L459
+    // that leads to this DecodeTx function https://github.com/bitcoin/bitcoin/blob/master/src/core_read.cpp#L123
     let tx_hex_str = hex::encode(&serde_json::to_string(&tx).unwrap());
 
     // 2. fund transaction
