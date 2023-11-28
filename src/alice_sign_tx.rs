@@ -69,11 +69,28 @@ pub async fn generate_transaction(vk: &[u8; 32], satoshi_amount: u64) -> Result<
         .map_err(|_| "TODO: real error")?;
     println!("{:?}", response);
 
+    // TODO: deserialize the response
+    let raw_tx_with_inputs = todo!();
+
     // 3. sign transaction
     // signrawtransactionwithwallet
+    let response = json_rpc_request("signrawtransactionwithwallet", vec![raw_tx_with_inputs])
+        .await
+        .map_err(|_| "TODO: real error")?;
+    println!("{:?}", response);
+
+    // TODO: deserialize the response
+    let signed_tx = todo!();
 
     // 4. broadcast transaction
     // sendrawtransaction
+    let response = json_rpc_request("sendrawtransaction", vec![signed_tx])
+        .await
+        .map_err(|_| "TODO: real error")?;
+    println!("{:?}", response);
+
+    // check status of response
+    todo!();
 
     //
     Ok(())
@@ -123,10 +140,29 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn test_json_rpc() {
+    async fn test_json_rpc_connection_with_bitcoind() {
+        // you can run the test with `RUST_LOG=trace`
         env_logger::init();
 
         let response = json_rpc_request("getblockchaininfo", vec![]).await.unwrap();
+
+        println!("{:?}", response);
+    }
+
+    #[tokio::test]
+    async fn test_generate_transaction_flow() {
+        // you can run the test with `RUST_LOG=trace`
+        env_logger::init();
+
+        let response = generate_transaction(
+            &[
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0,
+            ],
+            0,
+        )
+        .await
+        .unwrap();
 
         println!("{:?}", response);
     }
