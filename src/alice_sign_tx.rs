@@ -6,6 +6,7 @@ use bitcoin::{
     transaction::Version,
     Amount, PubkeyHash, ScriptBuf, Transaction, TxOut,
 };
+use bitcoincore_rpc::{RawTx, RpcApi};
 use reqwest::{
     header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE},
     Client,
@@ -21,6 +22,8 @@ struct Request {
     jsonrpc: &'static str,
     id: String,
     method: &'static str,
+    // TODO: this is not going to work, for example if there's a bool we need to pass it as a bool directly
+    // e.g. "true" -> true
     params: Vec<String>,
 }
 
@@ -54,7 +57,7 @@ pub async fn generate_transaction(vk: &[u8; 32], satoshi_amount: u64) -> Result<
     };
 
     let tx = Transaction {
-        version: Version::ONE,
+        version: Version::TWO,
         lock_time: LockTime::ZERO,
         // we don't need to specify inputs at this point, the wallet will fill that for us
         input: vec![],
@@ -65,14 +68,48 @@ pub async fn generate_transaction(vk: &[u8; 32], satoshi_amount: u64) -> Result<
     // bitcoind has an API to decode it: https://developer.bitcoin.org/reference/rpc/decoderawtransaction.html
     // with implementation here: https://github.com/bitcoin/bitcoin/blob/master/src/rpc/rawtransaction.cpp#L459
     // that leads to this DecodeTx function https://github.com/bitcoin/bitcoin/blob/master/src/core_read.cpp#L123
-    let tx_hex_str = hex::encode(&serde_json::to_string(&tx).unwrap());
+    // let tx_hex_str = hex::encode(&serde_json::to_string(&tx).unwrap());
+    // println!("naive: {tx_hex_str}");
+
+    let tx_hex_str = bitcoin::consensus::encode::serialize_hex(&tx);
+    println!("consensus::encode::serialize_hex: {tx_hex_str}");
+
+    // let mut bytes = Vec::new();
+    // let mut serializer = serde_json::Serializer::new(&mut bytes);
+    // bitcoin::consensus::serde::With::<bitcoin::consensus::serde::Hex>::serialize(
+    //     &tx,
+    //     &mut serializer,
+    // )
+    // .unwrap();
+    // let tx_hex_str = hex::encode(bytes);
+    // println!("other: {tx_hex_str}");
+
+    // let tx_hex_str = tx.raw_hex();
+    // println!("the bitcoin rpc one: {tx_hex_str}");
 
     // 2. fund transaction
     // https://developer.bitcoin.org/reference/rpc/fundrawtransaction.html
-    let response = json_rpc_request("fundrawtransaction", vec![tx_hex_str])
-        .await
-        .map_err(|_| "TODO: real error")?;
-    println!("{:?}", response);
+    let response = json_rpc_request(
+        "fundrawtransaction",
+        vec![tx_hex_str, "{}".to_string(), "false".to_string()],
+    )
+    .await
+    .map_err(|_| "TODO: real error")?;
+    println!("our own way: {:?}", response);
+
+    // try the same thing with bitcoin rpc:
+    println!("now trying with bitcoin core rpc:");
+    let rpc = bitcoincore_rpc::Client::new(
+        JSON_RPC_ENDPOINT,
+        bitcoincore_rpc::Auth::UserPass("root".to_string(), "hellohello".to_string()),
+    )
+    .unwrap();
+    let response = rpc.fund_raw_transaction(&tx, None, Some(true));
+    if response.is_err() {
+        println!("err: {}", response.unwrap_err());
+    } else {
+        println!("response: {:?}", response.unwrap());
+    }
 
     // TODO: deserialize the response
     let raw_tx_with_inputs = todo!();
@@ -164,7 +201,7 @@ mod tests {
                 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                 0, 0, 0, 0,
             ],
-            0,
+            1000,
         )
         .await
         .unwrap();

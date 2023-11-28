@@ -60,5 +60,6 @@ and obtain a new public key via:
 
 I believe we can switch wallets by using the `loadwallet` command.
 
-* `tb1q5pxn428emp73saglk7ula0yx5j7ehegu6ud6ad` <-- I put some bitcoins in there from [this faucet](https://bitcoinfaucet.uo1.net/send.php) (you can see the wallet on [this explorer](https://blockstream.info/testnet/address/tb1q5pxn428emp73saglk7ula0yx5j7ehegu6ud6ad))
-* `tb1q6nkpv2j9lxrm6h3w4skrny3thswgdcca8cx9k6`
+* `tb1q5pxn428emp73saglk7ula0yx5j7ehegu6ud6ad` <-- I put some bitcoins in there from [this faucet](https://bitcoinfaucet.uo1.net/send.php) (you can see the wallet on [this explorer](https://blockstream.info/testnet/address/tb1q5pxn428emp73saglk7ula0yx5j7ehegu6ud6ad) where 141 satoshis were paid as fee)
+* `tb1q6nkpv2j9lxrm6h3w4skrny3thswgdcca8cx9k6
+`

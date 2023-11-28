@@ -7,10 +7,16 @@ edition = "2021"
 
 [dependencies]
 base64 = "0.21.5"
-bitcoin = { version = "0.31.0", features = ["serde"] }
+bitcoin = { version = "0.31.0", features = [
+    "serde",
+], path = "../rust-bitcoin/bitcoin" }
 env_logger = "0.10.1"
 hex = "0.4.3"
 reqwest = "0.11"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0" }
 tokio = { version = "1.34", features = ["macros"] }
+bitcoincore-rpc = "0.18"
+
+[patch.crates-io]
+bitcoin = { path = "../rust-bitcoin/bitcoin" }
