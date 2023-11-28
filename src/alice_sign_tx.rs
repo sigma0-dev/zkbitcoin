@@ -1,3 +1,4 @@
+use base64::{engine::general_purpose, Engine};
 use bitcoin::{
     absolute::LockTime,
     hashes::{hash160, Hash},
@@ -5,9 +6,23 @@ use bitcoin::{
     transaction::Version,
     Amount, PubkeyHash, ScriptBuf, Transaction, TxOut,
 };
+use reqwest::{
+    header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE},
+    Client,
+};
+use serde::Serialize;
+use std::time::Duration;
 
 pub const JSON_RPC_ENDPOINT: &str = "http://146.190.33.39:18331";
 const JSON_RPC_AUTH: &str = "root:hellohello";
+
+#[derive(Serialize)]
+struct Request {
+    jsonrpc: &'static str,
+    id: String,
+    method: String,
+    params: Vec<String>,
+}
 
 // TODO: perhaps this will help https://github.com/rust-bitcoin/rust-bitcoin/issues/294
 
@@ -55,57 +70,57 @@ pub fn generate_transaction(vk: &[u8], satoshi_amount: u64) {
     // sendrawtransaction
 }
 
+/// Implements a JSON RPC request to the bitcoind node.
+/// Following the [JSON RPC 1.0 spec](https://www.jsonrpc.org/specification_v1).
+pub async fn json_rpc_request(
+    method: String,
+    params: Vec<String>,
+) -> Result<String, reqwest::Error> {
+    let request = Request {
+        // bitcoind doesn't seem to support anything else but json rpc 1.0
+        jsonrpc: "1.0",
+        // I don't think that field is useful (https://www.jsonrpc.org/specification_v1)
+        id: "whatevs".to_string(),
+        method,
+        params,
+    };
+    let body = serde_json::to_string(&request).unwrap();
+
+    let user_n_pw = general_purpose::STANDARD.encode(JSON_RPC_AUTH);
+
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        AUTHORIZATION,
+        HeaderValue::from_str(&format!("Basic {}", user_n_pw)).unwrap(),
+    );
+    let client = Client::builder()
+        .default_headers(headers)
+        .timeout(Duration::from_secs(10))
+        .build()?;
+
+    let response = client
+        .post(JSON_RPC_ENDPOINT)
+        .header(CONTENT_TYPE, "application/json")
+        .body(body)
+        .send()
+        .await?;
+    println!("status_code: {:?}", &response.status().as_u16());
+
+    response.text().await
+}
+
 #[cfg(test)]
 mod tests {
-    use reqwest::{
-        header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE},
-        Client,
-    };
-    use serde::Serialize;
-    use std::time::Duration;
-
     use super::*;
-
-    #[derive(Serialize)]
-    struct Request {
-        jsonrpc: &'static str,
-        id: String,
-        method: String,
-        params: Vec<String>,
-    }
 
     #[tokio::test]
     async fn test_json_rpc() {
         env_logger::init();
 
-        let request = Request {
-            jsonrpc: "1.0",
-            id: "curltest".to_string(),
-            method: "getblockchaininfo".to_string(),
-            params: vec![],
-        };
-        let body = serde_json::to_string(&request).unwrap();
-
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            AUTHORIZATION,
-            HeaderValue::from_static("Basic cm9vdDpoZWxsb2hlbGxv"),
-        );
-        let client = Client::builder()
-            .default_headers(headers)
-            .timeout(Duration::from_secs(10))
-            .build()
-            .unwrap();
-
-        let response = client
-            .post(JSON_RPC_ENDPOINT)
-            .header(CONTENT_TYPE, "application/json")
-            .body(body)
-            .send()
+        let response = json_rpc_request("getblockchaininfo".to_string(), vec![])
             .await
             .unwrap();
-        println!("status_code: {:?}", &response.status().as_u16());
 
-        println!("{:?}", response.text().await);
+        println!("{:?}", response);
     }
 }
