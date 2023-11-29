@@ -45,13 +45,14 @@ pub struct Proof {
 
 /// The public input that has to be used by the verifier
 #[derive(Serialize, Deserialize)]
-pub struct ProofInputs(Vec<String>);
+pub struct ProofInputs(pub Vec<String>);
 
 impl VerifierKey {
-    pub fn hash(&self) -> Vec<u8> {
+    pub fn hash(&self) -> [u8; 32] {
         let mut hasher = Keccak256::new();
         // I know, this is a really ugly way to hash a struct :D
         hasher.update(serde_json::to_string(&self).unwrap());
-        hasher.finalize().to_vec()
+        let hash = hasher.finalize().to_vec();
+        hash.try_into().unwrap()
     }
 }

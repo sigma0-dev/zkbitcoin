@@ -76,19 +76,19 @@ pub fn parse_transaction(raw_tx: &Transaction) -> Result<SmartContract, &'static
     Ok(smart_contract)
 }
 
-/// Validates a request received from Bob.
-pub async fn validate_request(request: BobRequest) -> Result<(), &'static str> {
+/// Fetch the smart contract on-chain from the txid.
+pub async fn fetch_smart_contract(txid: bitcoin::Txid) -> Result<SmartContract, &'static str> {
     // fetch transaction + metadata based on txid
     let (transaction, confirmations) = {
-        println!("- fetching txid {txid}", txid = request.txid);
+        println!("- fetching txid {txid}", txid = txid);
 
         let response = json_rpc_request(
             None,
             "gettransaction",
-            &[serde_json::value::to_raw_value(&serde_json::Value::String(
-                request.txid.to_string(),
-            ))
-            .unwrap()],
+            &[
+                serde_json::value::to_raw_value(&serde_json::Value::String(txid.to_string()))
+                    .unwrap(),
+            ],
         )
         .await
         .map_err(|_| "TODO: real error")?;
@@ -111,7 +111,20 @@ pub async fn validate_request(request: BobRequest) -> Result<(), &'static str> {
     }
 
     // parse transaction
-    let smart_contract = parse_transaction(&transaction)?;
+    parse_transaction(&transaction)
+}
+
+/// Validates a request received from Bob.
+pub async fn validate_request(
+    request: BobRequest,
+    smart_contract: Option<SmartContract>,
+) -> Result<(), &'static str> {
+    // fetch the smart contract if not given
+    let smart_contract = if let Some(x) = smart_contract {
+        x
+    } else {
+        fetch_smart_contract(request.txid).await?
+    };
 
     // ensure that the vk makes sense with public input that are fixed
     if smart_contract.public_inputs.len() > request.vk.nPublic {
@@ -212,12 +225,14 @@ pub fn sign_transaction_ecdsa(
 mod tests {
     use std::path::PathBuf;
 
+    use secp256k1::hashes::Hash;
+
     use crate::plonk;
 
     use super::*;
 
-    #[test]
-    fn test_validate_bob_request() {
+    #[tokio::test]
+    async fn test_validate_bob_request() {
         // read circuit example files
         let circuit_files = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("circuit_example");
 
@@ -232,12 +247,40 @@ mod tests {
             let file = File::open(vk_path).expect("file not found");
             serde_json::from_reader(file).expect("error while reading file")
         };
-        let proof_inputs: plonk::ProofInputs = {
+        let public_inputs: plonk::ProofInputs = {
             let proof_inputs_path = circuit_files.join("proof_inputs.json");
             let file = File::open(proof_inputs_path).expect("file not found");
             serde_json::from_reader(file).expect("error while reading file")
         };
 
+        // truncate a portion (let's say 10) of the public inputs
+        assert_eq!(public_inputs.0.len(), 96);
+        let truncated_pi = public_inputs
+            .0
+            .iter()
+            .map(|x| x.as_bytes().to_vec())
+            .take(10)
+            .collect();
+
+        // hash the vk
+        let vk_hash = vk.hash();
+
         // create bob request
+        let bob_request = BobRequest {
+            txid: bitcoin::Txid::all_zeros(),
+            vk,
+            proof,
+            public_inputs: public_inputs.0,
+        };
+        let smart_contract = SmartContract {
+            locked_value: Amount::from_sat(10),
+            vk_hash,
+            public_inputs: truncated_pi,
+        };
+
+        // try to validate the request
+        validate_request(bob_request, Some(smart_contract))
+            .await
+            .unwrap();
     }
 }
