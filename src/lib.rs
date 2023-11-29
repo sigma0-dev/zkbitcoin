@@ -2,6 +2,7 @@
 
 pub mod constants;
 pub mod json_rpc_stuff;
+pub mod plonk;
 
 /// 1. Alice signs a transaction to deploy a smart contract.
 pub mod alice_sign_tx;

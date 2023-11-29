@@ -1,4 +1,7 @@
+use serde::{Deserialize, Serialize};
+
 /// The snarkjs plonk verifier key format.
+#[derive(Serialize, Deserialize)]
 pub struct VerifierKey {
     protocol: String, // "plonk",
     curve: String,    // "bn128",
@@ -17,3 +20,6 @@ pub struct VerifierKey {
     X_2: Vec<Vec<String>>,
     w: String, //"6837567842312086091520287814181175430087169027974246751610506942214842701774"
 }
+
+#[derive(Serialize, Deserialize)]
+pub struct Proof {}
