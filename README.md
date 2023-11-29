@@ -82,3 +82,25 @@ Note that you can get their associated public keys via:
 ```shell
 bitcoin-cli -testnet -rpcconnect=146.190.33.39 -rpcport=18331 -rpcuser=root -rpcpassword=hellohello -rpcwallet=mywallet getaddressinfo "tb1q5pxn428emp73saglk7ula0yx5j7ehegu6ud6ad"
 ```
+
+## Use circom/snarkjs
+
+The following script creates a `vk.json` which you can also see in [`fixtures/vk.json`](fixtures/vk.json)
+
+```shell
+# phase1
+snarkjs powersoftau new bn128 14 phase1_start.ptau -v
+snarkjs powersoftau contribute phase1_start.ptau phase1_end.ptau --name="First contribution" -v
+
+# start of phase 2 (but don't do the phase 2)
+snarkjs powersoftau prepare phase2 phase1_end.ptau phase2_start.ptau -v
+
+# compile
+circom circuit.circom --r1cs --wasm --sym
+
+# create zkey
+snarkjs plonk setup circuit.r1cs phase2_start.ptau circuit_final.zkey
+
+# export vk
+snarkjs zkey export verificationkey circuit_final.zkey vk.json
+```
