@@ -11,7 +11,6 @@ use tempdir::TempDir;
 
 use crate::plonk;
 use crate::{
-    bob_request::BobRequest,
     constants::{MINIMUM_CONFIRMATIONS, ZKBITCOIN_PUBKEY},
     json_rpc_stuff::json_rpc_request,
 };

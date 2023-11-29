@@ -8,8 +8,8 @@ pub mod plonk;
 pub mod alice_sign_tx;
 
 /// 2. Bob sends a request to the zkBitcoin committee to unlock funds from a smart contract.
+/// The MPC committee can verify that request.
 pub mod bob_request;
 
-/// 3. The zkBitcoin committee produce a collaborative schnorr signature to unlock the funds for Bob,
-/// given that Bob's proof verifies.
+/// 3. The zkBitcoin committee produce a collaborative schnorr signature to unlock the funds for Bob.
 pub mod mpc_sign_tx;
