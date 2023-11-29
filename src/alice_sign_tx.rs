@@ -10,7 +10,8 @@ use crate::{constants::ZKBITCOIN_PUBKEY, json_rpc_stuff::json_rpc_request};
 /// and authenticates the verifier key `vk` that can unlock the founds.
 pub async fn generate_and_broadcast_transaction(
     wallet: Option<String>,
-    vk: &[u8; 32],
+    vk_hash: &[u8; 32],
+    public_inputs: Vec<String>,
     satoshi_amount: u64,
 ) -> Result<bitcoin::Txid, &'static str> {
     // 1. create transaction based on VK + amount
@@ -26,14 +27,23 @@ pub async fn generate_and_broadcast_transaction(
         });
         // second output is VK
         {
-            let script_pubkey = ScriptBuf::new_op_return(&vk);
+            let script_pubkey = ScriptBuf::new_op_return(&vk_hash);
             let value = script_pubkey.dust_value();
             outputs.push(TxOut {
                 value,
                 script_pubkey,
             });
         }
-        // TODO: other outputs are public input
+        // other outputs are fixed public inputs
+        for pi in public_inputs {
+            let thing: &bitcoin::script::PushBytes = pi.as_bytes().try_into().unwrap();
+            let script_pubkey = ScriptBuf::new_op_return(thing);
+            let value = script_pubkey.dust_value();
+            outputs.push(TxOut {
+                value,
+                script_pubkey,
+            });
+        }
 
         let tx = Transaction {
             version: Version::TWO,
@@ -181,7 +191,8 @@ mod tests {
             0, 0, 0,
         ];
         let wallet = Some("mywallet".to_string());
-        let response = generate_and_broadcast_transaction(wallet, &vk, 1000)
+        let satoshi_amount = 1000;
+        let response = generate_and_broadcast_transaction(wallet, &vk, vec![], satoshi_amount)
             .await
             .unwrap();
 
