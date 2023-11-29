@@ -235,17 +235,14 @@ mod tests {
         // you can run the test with `RUST_LOG=trace`
         env_logger::init();
 
+        let vk = [
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0,
+        ];
         let wallet = Some("mywallet".to_string());
-        let response = generate_and_broadcast_transaction(
-            wallet,
-            &[
-                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                0, 0, 0, 0,
-            ],
-            1000,
-        )
-        .await
-        .unwrap();
+        let response = generate_and_broadcast_transaction(wallet, &vk, 1000)
+            .await
+            .unwrap();
 
         println!("{:?}", response);
     }
