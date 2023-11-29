@@ -11,7 +11,7 @@ use reqwest::{
     header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE},
     Client,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
 pub const JSON_RPC_ENDPOINT: &str = "http://146.190.33.39:18331";
@@ -67,63 +67,61 @@ pub async fn generate_transaction(
         input: vec![],
         output: vec![output],
     };
+    let tx_hex = bitcoin::consensus::encode::serialize_hex(&tx);
 
-    // we now have to encode the transaction as a hex string
-    // bitcoind has an API to decode it: https://developer.bitcoin.org/reference/rpc/decoderawtransaction.html
-    // with implementation here: https://github.com/bitcoin/bitcoin/blob/master/src/rpc/rawtransaction.cpp#L459
-    // that leads to this DecodeTx function https://github.com/bitcoin/bitcoin/blob/master/src/core_read.cpp#L123
-    // let tx_hex_str = hex::encode(&serde_json::to_string(&tx).unwrap());
-    // println!("naive: {tx_hex_str}");
+    //println!("- Alice's raw tx for 0xzkBitcoin: {tx:?}");
+    println!("- Alice's raw tx for 0xzkBitcoin (in hex): {tx_hex}");
 
-    let tx_hex_str = bitcoin::consensus::encode::serialize_hex(&tx);
-    println!("consensus::encode::serialize_hex: {tx_hex_str}");
-
-    // let mut bytes = Vec::new();
-    // let mut serializer = serde_json::Serializer::new(&mut bytes);
-    // bitcoin::consensus::serde::With::<bitcoin::consensus::serde::Hex>::serialize(
-    //     &tx,
-    //     &mut serializer,
-    // )
-    // .unwrap();
-    // let tx_hex_str = hex::encode(bytes);
-    // println!("other: {tx_hex_str}");
-
-    // let tx_hex_str = tx.raw_hex();
-    // println!("the bitcoin rpc one: {tx_hex_str}");
-
-    // 2. fund transaction
+    // 2. ask wallet to add inputs to fund the transaction
     // https://developer.bitcoin.org/reference/rpc/fundrawtransaction.html
-    let response = json_rpc_request(&wallet, "fundrawtransaction", vec![tx_hex_str])
+    let response = json_rpc_request(&wallet, "fundrawtransaction", vec![tx_hex])
         .await
         .map_err(|_| "TODO: real error")?;
-    println!("our own way: {:?}", response);
 
-    // TODO: deserialize the response
-    let raw_tx_with_inputs = todo!();
+    // TODO: get rid of unwrap in here
+    let (raw_tx_with_inputs_hex, raw_tx_with_inputs) = {
+        let response: jsonrpc::Response = serde_json::from_str(&response).unwrap();
+        let parsed: bitcoincore_rpc::json::FundRawTransactionResult = response.result().unwrap();
+        let tx: Transaction = bitcoin::consensus::encode::deserialize(&parsed.hex).unwrap();
+        let actual_hex = hex::encode(&parsed.hex);
+        //println!("- funded tx: {tx:?}");
+        println!("- funded tx (in hex): {actual_hex}");
+
+        (actual_hex, tx)
+    };
 
     // 3. sign transaction
     // signrawtransactionwithwallet
     let response = json_rpc_request(
         &wallet,
         "signrawtransactionwithwallet",
-        vec![raw_tx_with_inputs],
+        vec![raw_tx_with_inputs_hex],
     )
     .await
     .map_err(|_| "TODO: real error")?;
-    println!("{:?}", response);
 
-    // TODO: deserialize the response
-    let signed_tx = todo!();
+    let (signed_tx_hex, signed_tx) = {
+        let response: jsonrpc::Response = serde_json::from_str(&response).unwrap();
+        let parsed: bitcoincore_rpc::json::SignRawTransactionResult = response.result().unwrap();
+        let tx: Transaction = bitcoin::consensus::encode::deserialize(&parsed.hex).unwrap();
+        let actual_hex = hex::encode(&parsed.hex);
+        //println!("- signed tx: {tx:?}");
+        println!("- signed tx (in hex): {actual_hex}");
+
+        (actual_hex, tx)
+    };
 
     // 4. broadcast transaction
     // sendrawtransaction
-    let response = json_rpc_request(&wallet, "sendrawtransaction", vec![signed_tx])
+    let response = json_rpc_request(&wallet, "sendrawtransaction", vec![signed_tx_hex])
         .await
         .map_err(|_| "TODO: real error")?;
     println!("{:?}", response);
 
-    // check status of response
-    todo!();
+    let response: jsonrpc::Response = serde_json::from_str(&response).unwrap();
+    let txid: bitcoin::Txid = response.result().unwrap();
+    println!("- txid broadcast to the network: {txid}");
+    println!("- on an explorer: https://blockstream.info/testnet/tx/{txid}");
 
     //
     Ok(())
@@ -169,7 +167,8 @@ pub async fn json_rpc_request(
         .body(body)
         .send()
         .await?;
-    println!("status_code: {:?}", &response.status().as_u16());
+
+    println!("- status_code: {:?}", &response.status().as_u16());
 
     response.text().await
 }
