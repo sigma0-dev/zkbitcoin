@@ -1,8 +1,67 @@
+use std::str::FromStr;
+
 use bitcoin::{
-    sighash::{self, Prevouts, SighashCache},
-    TapSighashType, TapTweakHash, Transaction,
+    absolute::LockTime,
+    key::UntweakedPublicKey,
+    sighash::{Prevouts, SighashCache},
+    transaction::Version,
+    Address, Amount, OutPoint, PublicKey, ScriptBuf, Sequence, TapSighashType, TapTweakHash,
+    Transaction, TxIn, TxOut, Txid, Witness,
 };
 use secp256k1::{hashes::Hash, XOnlyPublicKey};
+
+use crate::constants::ZKBITCOIN_PUBKEY;
+
+pub fn create_transaction(txid: Txid, satoshi_amount: u64, bob_address: Address) -> Transaction {
+    // TODO: should we enforce that tx.value == amount?
+
+    let inputs = {
+        // the first input is the smart contract we're unlocking
+        let input = TxIn {
+            previous_output: OutPoint { txid, vout: 0 },
+            script_sig: ScriptBuf::new(),
+            sequence: Sequence::MAX,
+            witness: Witness::new(),
+        };
+
+        vec![input]
+    };
+
+    // we need to subtract the amount  to cover for the fee
+    let fee_bitcoin_sat = 1000;
+    let fee_zkbitcoin_sat = 1000;
+
+    let amount_for_bob = satoshi_amount - fee_bitcoin_sat - fee_zkbitcoin_sat;
+
+    let outputs = {
+        let mut outputs = vec![];
+
+        // first output is a P2TR to Bob
+        outputs.push(TxOut {
+            value: Amount::from_sat(amount_for_bob),
+            script_pubkey: bob_address.script_pubkey(),
+        });
+
+        // second output is to us
+        let secp = secp256k1::Secp256k1::default();
+        let zkbitcoin_pubkey: PublicKey = PublicKey::from_str(ZKBITCOIN_PUBKEY).unwrap();
+        let internal_key = UntweakedPublicKey::from(zkbitcoin_pubkey);
+        outputs.push(TxOut {
+            value: Amount::from_sat(fee_zkbitcoin_sat),
+            script_pubkey: ScriptBuf::new_p2tr(&secp, internal_key, None),
+        });
+
+        outputs
+    };
+
+    let tx = Transaction {
+        version: Version::TWO,
+        lock_time: LockTime::ZERO, // no lock time
+        input: inputs,
+        output: outputs,
+    };
+    tx
+}
 
 pub fn sign_transaction_schnorr(
     sk: &secp256k1::SecretKey,
@@ -48,11 +107,6 @@ pub fn sign_transaction_schnorr(
 #[cfg(test)]
 mod tests {
     use std::str::FromStr;
-
-    use bitcoin::{
-        absolute::LockTime, key::UntweakedPublicKey, transaction::Version, Amount, OutPoint,
-        PublicKey, ScriptBuf, Sequence, TxIn, TxOut, Txid, Witness,
-    };
 
     use crate::constants::ZKBITCOIN_PUBKEY;
 

@@ -1,9 +1,9 @@
 use std::str::FromStr;
 
-use bitcoin::{
-    absolute::LockTime, Amount, PublicKey, ScriptBuf, Transaction, transaction::Version, TxOut,
-};
 use bitcoin::key::UntweakedPublicKey;
+use bitcoin::{
+    absolute::LockTime, transaction::Version, Amount, PublicKey, ScriptBuf, Transaction, TxOut,
+};
 
 use crate::{constants::ZKBITCOIN_PUBKEY, json_rpc_stuff::json_rpc_request};
 
@@ -24,11 +24,13 @@ pub async fn generate_and_broadcast_transaction(
         // first output is a P2PK to 0xzkBitcoin
         let zkbitcoin_pubkey: PublicKey = PublicKey::from_str(ZKBITCOIN_PUBKEY).unwrap();
         let tx_out = if false {
+            // P2PK
             TxOut {
                 value: Amount::from_sat(satoshi_amount),
                 script_pubkey: ScriptBuf::new_p2pk(&zkbitcoin_pubkey),
             }
         } else {
+            // P2TR
             let secp = secp256k1::Secp256k1::default();
             let internal_key = UntweakedPublicKey::from(zkbitcoin_pubkey);
             let pubkey = ScriptBuf::new_p2tr(&secp, internal_key, None);
@@ -82,8 +84,8 @@ pub async fn generate_and_broadcast_transaction(
             "fundrawtransaction",
             &[serde_json::value::to_raw_value(&serde_json::Value::String(tx_hex)).unwrap()],
         )
-            .await
-            .map_err(|_| "TODO: real error")?;
+        .await
+        .map_err(|_| "TODO: real error")?;
 
         // TODO: get rid of unwrap in here
         let response: jsonrpc::Response = serde_json::from_str(&response).unwrap();
@@ -108,8 +110,8 @@ pub async fn generate_and_broadcast_transaction(
                     .unwrap(),
             ],
         )
-            .await
-            .map_err(|_| "TODO: real error")?;
+        .await
+        .map_err(|_| "TODO: real error")?;
 
         let response: jsonrpc::Response = serde_json::from_str(&response).unwrap();
         let parsed: bitcoincore_rpc::json::SignRawTransactionResult = response.result().unwrap();
@@ -130,8 +132,8 @@ pub async fn generate_and_broadcast_transaction(
             "sendrawtransaction",
             &[serde_json::value::to_raw_value(&serde_json::Value::String(signed_tx_hex)).unwrap()],
         )
-            .await
-            .map_err(|_| "TODO: real error")?;
+        .await
+        .map_err(|_| "TODO: real error")?;
         println!("{:?}", response);
 
         let response: jsonrpc::Response = serde_json::from_str(&response).unwrap();
@@ -187,7 +189,7 @@ mod tests {
             &url,
             bitcoincore_rpc::Auth::UserPass("root".to_string(), "hellohello".to_string()),
         )
-            .unwrap();
+        .unwrap();
         let tx = "0200000000010001e8030000000000004076a914000000000000000000000000000000000000000088ac6a200000000000000000000000000000000000000000000000000000000000000000040000000000000000";
         let response = rpc.fund_raw_transaction(tx, None, Some(true));
         println!("{:?}", response);
