@@ -98,28 +98,6 @@ pub async fn generate_transaction(
         .map_err(|_| "TODO: real error")?;
     println!("our own way: {:?}", response);
 
-    // try the same thing with bitcoin rpc:
-    let url = match &wallet {
-        Some(w) => format!("{}/wallet/{}", JSON_RPC_ENDPOINT, w),
-        None => JSON_RPC_ENDPOINT.to_string(),
-    };
-    println!("now trying with bitcoin core rpc:");
-    let rpc = bitcoincore_rpc::Client::new(
-        &url,
-        bitcoincore_rpc::Auth::UserPass("root".to_string(), "hellohello".to_string()),
-    )
-    .unwrap();
-    let response = rpc.fund_raw_transaction(&tx, None, Some(true));
-
-    // print the body of the response
-    
-
-    if response.is_err() {
-        println!("err: {}", response.unwrap_err());
-    } else {
-        println!("response: {:?}", response.unwrap());
-    }
-
     // TODO: deserialize the response
     let raw_tx_with_inputs = todo!();
 
@@ -210,6 +188,30 @@ mod tests {
             .await
             .unwrap();
 
+        println!("{:?}", response);
+    }
+
+    /// We actually don't use bitcoincore-rpc atm,
+    /// this is because it doesn't have great errors when we get error 500s from the server
+    /// it also doesn't support async so it's shit anyway
+    #[test]
+    fn test_bitcoin_rpc_lib() {
+        // you can run the test with `RUST_LOG=trace`
+        env_logger::init();
+
+        let wallet = Some("mywallet".to_string());
+        let url = match &wallet {
+            Some(w) => format!("{}/wallet/{}", JSON_RPC_ENDPOINT, w),
+            None => JSON_RPC_ENDPOINT.to_string(),
+        };
+        println!("now trying with bitcoin core rpc:");
+        let rpc = bitcoincore_rpc::Client::new(
+            &url,
+            bitcoincore_rpc::Auth::UserPass("root".to_string(), "hellohello".to_string()),
+        )
+        .unwrap();
+        let tx = "0200000000010001e8030000000000004076a914000000000000000000000000000000000000000088ac6a200000000000000000000000000000000000000000000000000000000000000000040000000000000000";
+        let response = rpc.fund_raw_transaction(tx, None, Some(true));
         println!("{:?}", response);
     }
 
