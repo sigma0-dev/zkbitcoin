@@ -12,13 +12,22 @@ use secp256k1::{hashes::Hash, XOnlyPublicKey};
 
 use crate::constants::ZKBITCOIN_PUBKEY;
 
-pub fn create_transaction(txid: Txid, satoshi_amount: u64, bob_address: Address) -> Transaction {
+pub fn create_transaction(
+    utxo: (Txid, u32),
+    satoshi_amount: u64,
+    bob_address: Address,
+    fee_bitcoin_sat: u64,
+    fee_zkbitcoin_sat: u64,
+) -> Transaction {
     // TODO: should we enforce that tx.value == amount?
 
     let inputs = {
         // the first input is the smart contract we're unlocking
         let input = TxIn {
-            previous_output: OutPoint { txid, vout: 0 },
+            previous_output: OutPoint {
+                txid: utxo.0,
+                vout: utxo.1,
+            },
             script_sig: ScriptBuf::new(),
             sequence: Sequence::MAX,
             witness: Witness::new(),
@@ -28,9 +37,6 @@ pub fn create_transaction(txid: Txid, satoshi_amount: u64, bob_address: Address)
     };
 
     // we need to subtract the amount  to cover for the fee
-    let fee_bitcoin_sat = 1000;
-    let fee_zkbitcoin_sat = 1000;
-
     let amount_for_bob = satoshi_amount - fee_bitcoin_sat - fee_zkbitcoin_sat;
 
     let outputs = {
@@ -108,7 +114,9 @@ pub fn sign_transaction_schnorr(
 mod tests {
     use std::str::FromStr;
 
-    use crate::constants::ZKBITCOIN_PUBKEY;
+    use bitcoin::Network;
+
+    use crate::constants::{ZKBITCOIN_ADDRESS, ZKBITCOIN_PUBKEY};
 
     use super::*;
 
@@ -153,5 +161,39 @@ mod tests {
         let tx = create_dummy_tx();
         let sig = sign_transaction_schnorr(&sk, &tx);
         println!("{sig:?}");
+    }
+
+    /// https://blockstream.info/testnet/tx/0a38352d1ba4efdc785bc895abdb3f3185624100509d45aa2663b27a2fc094ea?expand
+    #[test]
+    fn test_real_tx() {
+        let txid =
+            Txid::from_str("0a38352d1ba4efdc785bc895abdb3f3185624100509d45aa2663b27a2fc094ea")
+                .unwrap();
+        let vout = 0;
+        let satoshi_amount = 1000;
+
+        let bob_address = Address::from_str(ZKBITCOIN_ADDRESS)
+            .unwrap()
+            .require_network(Network::Testnet)
+            .unwrap();
+
+        let fee_bitcoin_sat = 800;
+        let fee_zkbitcoin_sat = 200;
+        let tx = create_transaction(
+            (txid, vout),
+            satoshi_amount,
+            bob_address,
+            fee_bitcoin_sat,
+            fee_zkbitcoin_sat,
+        );
+
+        println!("{tx:#?}");
+
+        let sk = secp256k1::SecretKey::new(&mut rand::thread_rng());
+        let tx = create_dummy_tx();
+        let sig = sign_transaction_schnorr(&sk, &tx);
+        println!("{sig:?}");
+
+        // TODO: place signature in witness
     }
 }

@@ -35,6 +35,7 @@ pub struct SmartContract {
     pub locked_value: Amount,
     pub vk_hash: [u8; 32],
     pub public_inputs: Vec<Vec<u8>>,
+    pub vout_of_zkbitcoin_utxo: u32,
 }
 
 /// Extracts smart contract information as a [SmartContract] from a transaction.
@@ -42,6 +43,7 @@ pub fn parse_transaction(raw_tx: &Transaction) -> Result<SmartContract, &'static
     let zkbitcoin_pubkey: PublicKey = PublicKey::from_str(ZKBITCOIN_PUBKEY).unwrap();
 
     // ensure that the first or second output is to 0xzkBitcoin and extract amount
+    let mut vout_of_zkbitcoin_utxo = 0;
     let mut outputs = raw_tx.output.iter();
     let locked_value = {
         let output = outputs.next().ok_or("tx has no output")?;
@@ -51,6 +53,7 @@ pub fn parse_transaction(raw_tx: &Transaction) -> Result<SmartContract, &'static
             if output.script_pubkey.as_script().p2pk_public_key() != Some(zkbitcoin_pubkey) {
                 return Err("Transaction's first or second output must be for 0xzkBitcoin");
             }
+            vout_of_zkbitcoin_utxo = 1;
             output.value
         } else {
             output.value
@@ -85,6 +88,7 @@ pub fn parse_transaction(raw_tx: &Transaction) -> Result<SmartContract, &'static
         locked_value,
         vk_hash,
         public_inputs,
+        vout_of_zkbitcoin_utxo,
     };
     Ok(smart_contract)
 }
@@ -251,6 +255,7 @@ mod tests {
             locked_value: Amount::from_sat(10),
             vk_hash,
             public_inputs: truncated_pi,
+            vout_of_zkbitcoin_utxo: 0,
         };
 
         // create bob request
