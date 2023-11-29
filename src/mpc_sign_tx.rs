@@ -29,9 +29,9 @@ pub fn parse_transaction(raw_tx: &Transaction) -> Result<SmartContract, &'static
             if output.script_pubkey.as_script().p2pk_public_key() != Some(zkbitcoin_pubkey) {
                 return Err("Transaction's first or second output must be for 0xzkBitcoin");
             }
-            let locked_value = output.value;
+            output.value
         } else {
-            let locked_value = output.value;
+            output.value
         }
     };
 
