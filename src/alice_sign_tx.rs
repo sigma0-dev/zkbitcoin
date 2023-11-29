@@ -29,7 +29,11 @@ struct Request {
 
 // TODO: perhaps this will help https://github.com/rust-bitcoin/rust-bitcoin/issues/294
 
-pub async fn generate_transaction(vk: &[u8; 32], satoshi_amount: u64) -> Result<(), &'static str> {
+pub async fn generate_transaction(
+    wallet: Option<String>,
+    vk: &[u8; 32],
+    satoshi_amount: u64,
+) -> Result<(), &'static str> {
     // TODO: replace with our actual public key hash
     let zkbitcoin_pubkey_hash: PubkeyHash = PubkeyHash::from_raw_hash(hash160::Hash::all_zeros());
 
@@ -89,19 +93,27 @@ pub async fn generate_transaction(vk: &[u8; 32], satoshi_amount: u64) -> Result<
 
     // 2. fund transaction
     // https://developer.bitcoin.org/reference/rpc/fundrawtransaction.html
-    let response = json_rpc_request("fundrawtransaction", vec![tx_hex_str])
+    let response = json_rpc_request(&wallet, "fundrawtransaction", vec![tx_hex_str])
         .await
         .map_err(|_| "TODO: real error")?;
     println!("our own way: {:?}", response);
 
     // try the same thing with bitcoin rpc:
+    let url = match &wallet {
+        Some(w) => format!("{}/wallet/{}", JSON_RPC_ENDPOINT, w),
+        None => JSON_RPC_ENDPOINT.to_string(),
+    };
     println!("now trying with bitcoin core rpc:");
     let rpc = bitcoincore_rpc::Client::new(
-        JSON_RPC_ENDPOINT,
+        &url,
         bitcoincore_rpc::Auth::UserPass("root".to_string(), "hellohello".to_string()),
     )
     .unwrap();
     let response = rpc.fund_raw_transaction(&tx, None, Some(true));
+
+    // print the body of the response
+    
+
     if response.is_err() {
         println!("err: {}", response.unwrap_err());
     } else {
@@ -113,9 +125,13 @@ pub async fn generate_transaction(vk: &[u8; 32], satoshi_amount: u64) -> Result<
 
     // 3. sign transaction
     // signrawtransactionwithwallet
-    let response = json_rpc_request("signrawtransactionwithwallet", vec![raw_tx_with_inputs])
-        .await
-        .map_err(|_| "TODO: real error")?;
+    let response = json_rpc_request(
+        &wallet,
+        "signrawtransactionwithwallet",
+        vec![raw_tx_with_inputs],
+    )
+    .await
+    .map_err(|_| "TODO: real error")?;
     println!("{:?}", response);
 
     // TODO: deserialize the response
@@ -123,7 +139,7 @@ pub async fn generate_transaction(vk: &[u8; 32], satoshi_amount: u64) -> Result<
 
     // 4. broadcast transaction
     // sendrawtransaction
-    let response = json_rpc_request("sendrawtransaction", vec![signed_tx])
+    let response = json_rpc_request(&wallet, "sendrawtransaction", vec![signed_tx])
         .await
         .map_err(|_| "TODO: real error")?;
     println!("{:?}", response);
@@ -138,6 +154,7 @@ pub async fn generate_transaction(vk: &[u8; 32], satoshi_amount: u64) -> Result<
 /// Implements a JSON RPC request to the bitcoind node.
 /// Following the [JSON RPC 1.0 spec](https://www.jsonrpc.org/specification_v1).
 pub async fn json_rpc_request(
+    wallet: &Option<String>,
     method: &'static str,
     params: Vec<String>,
 ) -> Result<String, reqwest::Error> {
@@ -163,8 +180,13 @@ pub async fn json_rpc_request(
         .timeout(Duration::from_secs(10))
         .build()?;
 
+    let url = match wallet {
+        Some(wallet) => format!("{}/wallet/{}", JSON_RPC_ENDPOINT, wallet),
+        None => JSON_RPC_ENDPOINT.to_string(),
+    };
+
     let response = client
-        .post(JSON_RPC_ENDPOINT)
+        .post(url)
         .header(CONTENT_TYPE, "application/json")
         .body(body)
         .send()
@@ -183,7 +205,10 @@ mod tests {
         // you can run the test with `RUST_LOG=trace`
         env_logger::init();
 
-        let response = json_rpc_request("getblockchaininfo", vec![]).await.unwrap();
+        let wallet = Some("mywallet".to_string());
+        let response = json_rpc_request(&wallet, "getblockchaininfo", vec![])
+            .await
+            .unwrap();
 
         println!("{:?}", response);
     }
@@ -193,7 +218,9 @@ mod tests {
         // you can run the test with `RUST_LOG=trace`
         env_logger::init();
 
+        let wallet = Some("mywallet".to_string());
         let response = generate_transaction(
+            wallet,
             &[
                 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                 0, 0, 0, 0,

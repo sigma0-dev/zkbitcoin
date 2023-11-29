@@ -20,6 +20,8 @@ It seems like things get encoded in this order without segwit: `version|inputs|o
 
 [This article](https://github.com/jimmysong/programmingbitcoin/blob/master/ch13.asciidoc) has a similar explanation on the serialization.
 
+Also this has a nice visualization: https://bc-2.jp/tools/txeditor2.html
+
 If I pass it to `decoderawtransaction` or an online decoder like https://btc.com/tools/tx/decode I get:
 
 ```json
