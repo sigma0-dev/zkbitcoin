@@ -4,13 +4,12 @@
 
 use std::str::FromStr;
 
-use bitcoin::{
-    hashes::{hash160, Hash},
-    psbt::raw,
-    Amount, PubkeyHash, PublicKey, ScriptBuf, Transaction,
-};
+use bitcoin::{Amount, PublicKey, Transaction};
 
-use crate::constants::ZKBITCOIN_PUBKEY;
+use crate::{
+    constants::{MINIMUM_CONFIRMATIONS, ZKBITCOIN_PUBKEY},
+    json_rpc_stuff::json_rpc_request,
+};
 
 /// All the metadata that describes a smart contract.
 pub struct SmartContract {
@@ -81,9 +80,38 @@ pub fn parse_transaction(raw_tx: &Transaction) -> Result<SmartContract, &'static
 }
 
 /// Validates a request received from Bob.
-pub fn validate_request(request: BobRequest) -> Result<(), &'static str> {
-    // fetch transaction based on txid
-    let transaction = todo!();
+pub async fn validate_request(request: BobRequest) -> Result<(), &'static str> {
+    // fetch transaction + metadata based on txid
+    let (transaction, confirmations) = {
+        println!("- fetching txid {txid}", txid = request.txid);
+
+        let response = json_rpc_request(
+            None,
+            "gettransaction",
+            &[serde_json::value::to_raw_value(&serde_json::Value::String(
+                request.txid.to_string(),
+            ))
+            .unwrap()],
+        )
+        .await
+        .map_err(|_| "TODO: real error")?;
+
+        // TODO: get rid of unwrap in here
+        let response: jsonrpc::Response = serde_json::from_str(&response).unwrap();
+        let parsed: bitcoincore_rpc::json::GetTransactionResult = response.result().unwrap();
+        let tx: Transaction = bitcoin::consensus::encode::deserialize(&parsed.hex).unwrap();
+        let actual_hex = hex::encode(&parsed.hex);
+
+        //println!("- tx found: {tx:?}");
+        println!("- tx found: (in hex): {actual_hex}");
+
+        (tx, parsed.info.confirmations)
+    };
+
+    // enforce that the smart contract was confirmed
+    if confirmations < MINIMUM_CONFIRMATIONS {
+        return Err("Smart contract has not been confirmed yet");
+    }
 
     // parse transaction
     let smart_contract = parse_transaction(&transaction)?;
@@ -91,4 +119,5 @@ pub fn validate_request(request: BobRequest) -> Result<(), &'static str> {
     // TODO: ensure that number public inputs <= vk.num_public_inputs
 
     // TODO: ensure that the hash of the VK correctly gives us the vk_hash
+    Ok(())
 }

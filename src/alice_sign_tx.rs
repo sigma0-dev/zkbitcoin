@@ -2,30 +2,12 @@
 //! Alice wants to lock some amount of money, and allow anyone who can run a circuit (authenticated by its verifier key VK) to unlock it.
 //! For this, Alice can send a transaction to 0xzkBitcoin and inscribe the VK.
 
-use base64::{engine::general_purpose, Engine};
 use bitcoin::{
-    absolute::LockTime,
-    hashes::{hash160, Hash},
-    opcodes::all::{OP_CHECKSIG, OP_DUP, OP_EQUALVERIFY, OP_HASH160, OP_RETURN},
-    transaction::Version,
-    Amount, PubkeyHash, PublicKey, ScriptBuf, Transaction, TxOut,
+    absolute::LockTime, transaction::Version, Amount, PublicKey, ScriptBuf, Transaction, TxOut,
 };
-use bitcoincore_rpc::{RawTx, RpcApi};
-use reqwest::{
-    header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE},
-    Client,
-};
-use serde::{Deserialize, Serialize};
-use std::{str::FromStr, time::Duration};
+use std::str::FromStr;
 
-use crate::constants::ZKBITCOIN_PUBKEY;
-
-/// The endpoint for our bitcoind full node.
-pub const JSON_RPC_ENDPOINT: &str = "http://146.190.33.39:18331";
-
-/// The RPC authentication our bitcoind node uses (user + password).
-// TODO: obviously we're using poor's man authentication :))
-const JSON_RPC_AUTH: &str = "root:hellohello";
+use crate::{constants::ZKBITCOIN_PUBKEY, json_rpc_stuff::json_rpc_request};
 
 /// Generates and broadcasts a transaction to the network.
 /// Specifically, this sends a transaction to 0xzkBitcoin, for some given amount in satoshis,
@@ -38,7 +20,7 @@ pub async fn generate_and_broadcast_transaction(
     // 1. create transaction based on VK + amount
     // https://developer.bitcoin.org/reference/rpc/createrawtransaction.html
     //
-    let (tx, tx_hex) = {
+    let (_tx, tx_hex) = {
         let mut outputs = vec![];
         // first output is a P2PK to 0xzkBitcoin
         let zkbitcoin_pubkey: PublicKey = PublicKey::from_str(ZKBITCOIN_PUBKEY).unwrap();
@@ -75,9 +57,9 @@ pub async fn generate_and_broadcast_transaction(
     // 2. ask wallet to add inputs to fund the transaction
     // https://developer.bitcoin.org/reference/rpc/fundrawtransaction.html
     //
-    let (raw_tx_with_inputs_hex, raw_tx_with_inputs) = {
+    let (raw_tx_with_inputs_hex, _raw_tx_with_inputs) = {
         let response = json_rpc_request(
-            &wallet,
+            wallet.as_ref().map(String::as_str),
             "fundrawtransaction",
             &[serde_json::value::to_raw_value(&serde_json::Value::String(tx_hex)).unwrap()],
         )
@@ -98,9 +80,9 @@ pub async fn generate_and_broadcast_transaction(
     // 3. sign transaction
     // https://developer.bitcoin.org/reference/rpc/signrawtransactionwithwallet.html
     //
-    let (signed_tx_hex, signed_tx) = {
+    let (signed_tx_hex, _signed_tx) = {
         let response = json_rpc_request(
-            &wallet,
+            wallet.as_ref().map(String::as_str),
             "signrawtransactionwithwallet",
             &[
                 serde_json::value::to_raw_value(&serde_json::Value::String(raw_tx_with_inputs_hex))
@@ -125,7 +107,7 @@ pub async fn generate_and_broadcast_transaction(
     //
     let txid = {
         let response = json_rpc_request(
-            &wallet,
+            wallet.as_ref().map(String::as_str),
             "sendrawtransaction",
             &[serde_json::value::to_raw_value(&serde_json::Value::String(signed_tx_hex)).unwrap()],
         )
@@ -145,49 +127,12 @@ pub async fn generate_and_broadcast_transaction(
     Ok(txid)
 }
 
-/// Implements a JSON RPC request to the bitcoind node.
-/// Following the [JSON RPC 1.0 spec](https://www.jsonrpc.org/specification_v1).
-pub async fn json_rpc_request<'a>(
-    wallet: &Option<String>,
-    method: &'static str,
-    params: &'a [Box<serde_json::value::RawValue>],
-) -> Result<String, reqwest::Error> {
-    // create the request
-    let request = jsonrpc::Request::<'a> {
-        // bitcoind doesn't seem to support anything else but json rpc 1.0
-        jsonrpc: Some("1.0"),
-        // I don't think that field is useful (https://www.jsonrpc.org/specification_v1)
-        id: serde_json::Value::String("whatevs".to_string()),
-        method,
-        params: params,
-    };
-    let body = serde_json::to_string(&request).unwrap();
-    let user_n_pw = general_purpose::STANDARD.encode(JSON_RPC_AUTH);
-    let mut headers = HeaderMap::new();
-    headers.insert(
-        AUTHORIZATION,
-        HeaderValue::from_str(&format!("Basic {}", user_n_pw)).unwrap(),
-    );
-    let client = Client::builder()
-        .default_headers(headers)
-        .timeout(Duration::from_secs(10))
-        .build()?;
-    let url = match wallet {
-        Some(wallet) => format!("{}/wallet/{}", JSON_RPC_ENDPOINT, wallet),
-        None => JSON_RPC_ENDPOINT.to_string(),
-    };
-    let response = client
-        .post(url)
-        .header(CONTENT_TYPE, "application/json")
-        .body(body)
-        .send()
-        .await?;
-    println!("- status_code: {:?}", &response.status().as_u16());
-    response.text().await
-}
-
 #[cfg(test)]
 mod tests {
+    use bitcoincore_rpc::RpcApi;
+
+    use crate::json_rpc_stuff::JSON_RPC_ENDPOINT;
+
     use super::*;
 
     /// Simple test to see if we can reach our bitcoind full node.
@@ -197,9 +142,13 @@ mod tests {
         env_logger::init();
 
         let wallet = Some("mywallet".to_string());
-        let response = json_rpc_request(&wallet, "getblockchaininfo", &[])
-            .await
-            .unwrap();
+        let response = json_rpc_request(
+            wallet.as_ref().map(String::as_str),
+            "getblockchaininfo",
+            &[],
+        )
+        .await
+        .unwrap();
 
         println!("{:?}", response);
     }

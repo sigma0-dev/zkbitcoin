@@ -6,3 +6,6 @@ pub const ZKBITCOIN_PUBKEY: &str =
 
 /// The address associated to [ZKBITCOIN_PUBKEY].
 pub const ZKBITCOIN_ADDRESS: &str = "tb1q5pxn428emp73saglk7ula0yx5j7ehegu6ud6ad";
+
+/// Number of confirmation required for a transaction to be considered final.
+pub const MINIMUM_CONFIRMATIONS: i32 = 6;
