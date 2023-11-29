@@ -259,11 +259,16 @@ mod tests {
             .0
             .iter()
             .map(|x| x.as_bytes().to_vec())
-            .take(10)
+            .take(32)
             .collect();
 
-        // hash the vk
+        // create smart contract
         let vk_hash = vk.hash();
+        let smart_contract = SmartContract {
+            locked_value: Amount::from_sat(10),
+            vk_hash,
+            public_inputs: truncated_pi,
+        };
 
         // create bob request
         let bob_request = BobRequest {
@@ -271,11 +276,6 @@ mod tests {
             vk,
             proof,
             public_inputs: public_inputs.0,
-        };
-        let smart_contract = SmartContract {
-            locked_value: Amount::from_sat(10),
-            vk_hash,
-            public_inputs: truncated_pi,
         };
 
         // try to validate the request

@@ -20,7 +20,7 @@ plonk:
 	snarkjs plonk setup circuit.r1cs phase2_start.ptau circuit_final.zkey
 
 	# export vk
-	snarkjs zkey export verificationkey circuit_final.zkey verification_key.json
+	snarkjs zkey export verificationkey circuit_final.zkey vk.json
 
 	# prove
 	node output/circuit_js/generate_witness.js output/circuit_js/circuit.wasm public_input.json output/witness.wtns
