@@ -1,3 +1,5 @@
+use bitcoin::{sighash, Transaction};
+
 pub fn sign_transaction_ecdsa(
     sk: &secp256k1::SecretKey,
     tx: &Transaction,

@@ -12,4 +12,4 @@ pub mod bob_request;
 
 /// 3. The zkBitcoin committee produce a collaborative schnorr signature to unlock the funds for Bob,
 /// given that Bob's proof verifies.
-//pub mod mpc_sign_tx;
+pub mod mpc_sign_tx;
