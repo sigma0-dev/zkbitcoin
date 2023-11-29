@@ -72,6 +72,7 @@ pub fn create_transaction(
 pub fn sign_transaction_schnorr(
     sk: &secp256k1::SecretKey,
     tx: &Transaction,
+    prevouts: &[TxOut],
 ) -> secp256k1::schnorr::Signature {
     // key
     let secp = &secp256k1::Secp256k1::new();
@@ -89,21 +90,19 @@ pub fn sign_transaction_schnorr(
     // sighash
     let mut cache = SighashCache::new(tx);
     let mut sig_msg = Vec::new();
-    let utxos = &tx.output;
     cache
         .taproot_encode_signing_data_to(
             &mut sig_msg,
             tx_ind,
-            &Prevouts::All(utxos),
+            &Prevouts::All(prevouts),
             None,
             None,
             hash_ty,
         )
         .unwrap();
     let sighash = cache
-        .taproot_signature_hash(tx_ind, &Prevouts::All(&utxos), None, None, hash_ty)
+        .taproot_signature_hash(tx_ind, &Prevouts::All(prevouts), None, None, hash_ty)
         .unwrap();
-
     let msg = secp256k1::Message::from_digest(sighash.to_byte_array());
     let key_spend_sig = secp.sign_schnorr_with_aux_rand(&msg, &tweaked_keypair, &[0u8; 32]);
 
@@ -114,20 +113,28 @@ pub fn sign_transaction_schnorr(
 mod tests {
     use std::str::FromStr;
 
-    use bitcoin::{taproot, Network};
+    use bitcoin::{taproot, Network, Script};
 
     use crate::constants::{ZKBITCOIN_ADDRESS, ZKBITCOIN_PUBKEY};
 
     use super::*;
 
-    fn create_dummy_tx() -> Transaction {
+    fn create_dummy_tx() -> (Transaction, Vec<TxOut>) {
         let zkbitcoin_pubkey: PublicKey = PublicKey::from_str(ZKBITCOIN_PUBKEY).unwrap();
 
-        // first input is a P2TR
+        // cfg
         let satoshi_amount = 1000;
+
+        // prevout is a single output that we will then spend
         let secp = secp256k1::Secp256k1::default();
         let internal_key = UntweakedPublicKey::from(zkbitcoin_pubkey);
         let pubkey = ScriptBuf::new_p2tr(&secp, internal_key, None);
+        let prevouts = vec![TxOut {
+            value: Amount::from_sat(satoshi_amount),
+            script_pubkey: pubkey.clone(),
+        }];
+
+        // first input is a P2TR
         let input = vec![TxIn {
             previous_output: OutPoint {
                 txid: Txid::all_zeros(),
@@ -152,20 +159,20 @@ mod tests {
             output,
         };
 
-        tx
+        (tx, prevouts)
     }
 
     #[test]
     fn test_sign_tx() {
         let sk = secp256k1::SecretKey::new(&mut rand::thread_rng());
-        let tx = create_dummy_tx();
-        let sig = sign_transaction_schnorr(&sk, &tx);
+        let (tx, prevouts) = create_dummy_tx();
+        let sig = sign_transaction_schnorr(&sk, &tx, &prevouts);
         println!("{sig:?}");
     }
 
-    /// https://blockstream.info/testnet/tx/0a38352d1ba4efdc785bc895abdb3f3185624100509d45aa2663b27a2fc094ea?expand
     #[test]
     fn test_real_tx() {
+        // txid from https://blockstream.info/testnet/tx/0a38352d1ba4efdc785bc895abdb3f3185624100509d45aa2663b27a2fc094ea?expand
         let txid =
             Txid::from_str("0a38352d1ba4efdc785bc895abdb3f3185624100509d45aa2663b27a2fc094ea")
                 .unwrap();
@@ -187,9 +194,18 @@ mod tests {
             fee_zkbitcoin_sat,
         );
 
+        // prevouts
+        let prevouts = vec![TxOut {
+            value: Amount::from_sat(satoshi_amount),
+            script_pubkey: ScriptBuf::from_hex(
+                "512090e20d73215401a858439c988efebc1a3cc999377b7d38a790e0f844b4d0cd9b",
+            )
+            .unwrap(),
+        }];
+
         // sign
         let sk = secp256k1::SecretKey::new(&mut rand::thread_rng());
-        let sig = sign_transaction_schnorr(&sk, &tx);
+        let sig = sign_transaction_schnorr(&sk, &tx, &prevouts);
 
         // place signature in witness
         let hash_ty = TapSighashType::All;
