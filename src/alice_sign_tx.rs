@@ -1,3 +1,7 @@
+//! This is Alice's part of the flow, aka the first message.
+//! Alice wants to lock some amount of money, and allow anyone who can run a circuit (authenticated by its verifier key VK) to unlock it.
+//! For this, Alice can send a transaction to 0xzkBitcoin and inscribe the VK.
+
 use base64::{engine::general_purpose, Engine};
 use bitcoin::{
     absolute::LockTime,
@@ -14,36 +18,33 @@ use reqwest::{
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
+/// The endpoint for our bitcoind full node.
 pub const JSON_RPC_ENDPOINT: &str = "http://146.190.33.39:18331";
+
+/// The RPC authentication our bitcoind node uses (user + password).
+// TODO: obviously we're using poor's man authentication :))
 const JSON_RPC_AUTH: &str = "root:hellohello";
 
-#[derive(Serialize)]
-struct Request {
-    jsonrpc: &'static str,
-    id: String,
-    method: &'static str,
-    // TODO: this is not going to work, for example if there's a bool we need to pass it as a bool directly
-    // e.g. "true" -> true
-    params: Vec<String>,
-}
-
-// TODO: perhaps this will help https://github.com/rust-bitcoin/rust-bitcoin/issues/294
-
-pub async fn generate_transaction(
+/// Generates and broadcasts a transaction to the network.
+/// Specifically, this sends a transaction to 0xzkBitcoin, for some given amount in satoshis,
+/// and authenticates the verifier key `vk` that can unlock the founds.
+pub async fn generate_and_broadcast_transaction(
     wallet: Option<String>,
     vk: &[u8; 32],
     satoshi_amount: u64,
 ) -> Result<(), &'static str> {
     // TODO: replace with our actual public key hash
-    let zkbitcoin_pubkey_hash: PubkeyHash = PubkeyHash::from_raw_hash(hash160::Hash::all_zeros());
+    let zkbitcoin_address: PubkeyHash = PubkeyHash::from_raw_hash(hash160::Hash::all_zeros());
 
     // 1. create transaction based on VK + amount
     // https://developer.bitcoin.org/reference/rpc/createrawtransaction.html
+    //
+
     let script_pubkey = ScriptBuf::builder().
     // P2PKH
     push_opcode(OP_DUP)
     .push_opcode(OP_HASH160)
-    .push_slice(zkbitcoin_pubkey_hash)
+    .push_slice(zkbitcoin_address)
     .push_opcode(OP_EQUALVERIFY)
     .push_opcode(OP_CHECKSIG)
     // METADATA
@@ -74,9 +75,15 @@ pub async fn generate_transaction(
 
     // 2. ask wallet to add inputs to fund the transaction
     // https://developer.bitcoin.org/reference/rpc/fundrawtransaction.html
-    let response = json_rpc_request(&wallet, "fundrawtransaction", vec![tx_hex])
-        .await
-        .map_err(|_| "TODO: real error")?;
+    //
+
+    let response = json_rpc_request(
+        &wallet,
+        "fundrawtransaction",
+        &[serde_json::value::to_raw_value(&serde_json::Value::String(tx_hex)).unwrap()],
+    )
+    .await
+    .map_err(|_| "TODO: real error")?;
 
     // TODO: get rid of unwrap in here
     let (raw_tx_with_inputs_hex, raw_tx_with_inputs) = {
@@ -91,11 +98,16 @@ pub async fn generate_transaction(
     };
 
     // 3. sign transaction
-    // signrawtransactionwithwallet
+    // https://developer.bitcoin.org/reference/rpc/signrawtransactionwithwallet.html
+    //
+
     let response = json_rpc_request(
         &wallet,
         "signrawtransactionwithwallet",
-        vec![raw_tx_with_inputs_hex],
+        &[
+            serde_json::value::to_raw_value(&serde_json::Value::String(raw_tx_with_inputs_hex))
+                .unwrap(),
+        ],
     )
     .await
     .map_err(|_| "TODO: real error")?;
@@ -112,10 +124,16 @@ pub async fn generate_transaction(
     };
 
     // 4. broadcast transaction
-    // sendrawtransaction
-    let response = json_rpc_request(&wallet, "sendrawtransaction", vec![signed_tx_hex])
-        .await
-        .map_err(|_| "TODO: real error")?;
+    // https://developer.bitcoin.org/reference/rpc/sendrawtransaction.html
+    //
+
+    let response = json_rpc_request(
+        &wallet,
+        "sendrawtransaction",
+        &[serde_json::value::to_raw_value(&serde_json::Value::String(signed_tx_hex)).unwrap()],
+    )
+    .await
+    .map_err(|_| "TODO: real error")?;
     println!("{:?}", response);
 
     let response: jsonrpc::Response = serde_json::from_str(&response).unwrap();
@@ -129,23 +147,22 @@ pub async fn generate_transaction(
 
 /// Implements a JSON RPC request to the bitcoind node.
 /// Following the [JSON RPC 1.0 spec](https://www.jsonrpc.org/specification_v1).
-pub async fn json_rpc_request(
+pub async fn json_rpc_request<'a>(
     wallet: &Option<String>,
     method: &'static str,
-    params: Vec<String>,
+    params: &'a [Box<serde_json::value::RawValue>],
 ) -> Result<String, reqwest::Error> {
-    let request = Request {
+    // create the request
+    let request = jsonrpc::Request::<'a> {
         // bitcoind doesn't seem to support anything else but json rpc 1.0
-        jsonrpc: "1.0",
+        jsonrpc: Some("1.0"),
         // I don't think that field is useful (https://www.jsonrpc.org/specification_v1)
-        id: "whatevs".to_string(),
+        id: serde_json::Value::String("whatevs".to_string()),
         method,
-        params,
+        params: params,
     };
     let body = serde_json::to_string(&request).unwrap();
-
     let user_n_pw = general_purpose::STANDARD.encode(JSON_RPC_AUTH);
-
     let mut headers = HeaderMap::new();
     headers.insert(
         AUTHORIZATION,
@@ -155,21 +172,17 @@ pub async fn json_rpc_request(
         .default_headers(headers)
         .timeout(Duration::from_secs(10))
         .build()?;
-
     let url = match wallet {
         Some(wallet) => format!("{}/wallet/{}", JSON_RPC_ENDPOINT, wallet),
         None => JSON_RPC_ENDPOINT.to_string(),
     };
-
     let response = client
         .post(url)
         .header(CONTENT_TYPE, "application/json")
         .body(body)
         .send()
         .await?;
-
     println!("- status_code: {:?}", &response.status().as_u16());
-
     response.text().await
 }
 
@@ -177,22 +190,24 @@ pub async fn json_rpc_request(
 mod tests {
     use super::*;
 
+    /// Simple test to see if we can reach our bitcoind full node.
     #[tokio::test]
     async fn test_json_rpc_connection_with_bitcoind() {
         // you can run the test with `RUST_LOG=trace`
         env_logger::init();
 
         let wallet = Some("mywallet".to_string());
-        let response = json_rpc_request(&wallet, "getblockchaininfo", vec![])
+        let response = json_rpc_request(&wallet, "getblockchaininfo", &[])
             .await
             .unwrap();
 
         println!("{:?}", response);
     }
 
+    /// Simple test to see if the same thing work with bitcoincore-rpc.
     /// We actually don't use bitcoincore-rpc atm,
     /// this is because it doesn't have great errors when we get error 500s from the server
-    /// it also doesn't support async so it's shit anyway
+    /// it also doesn't support async so it's shit anyway?
     #[test]
     fn test_bitcoin_rpc_lib() {
         // you can run the test with `RUST_LOG=trace`
@@ -214,13 +229,14 @@ mod tests {
         println!("{:?}", response);
     }
 
+    /// Test the actual flow.
     #[tokio::test]
     async fn test_generate_transaction_flow() {
         // you can run the test with `RUST_LOG=trace`
         env_logger::init();
 
         let wallet = Some("mywallet".to_string());
-        let response = generate_transaction(
+        let response = generate_and_broadcast_transaction(
             wallet,
             &[
                 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
