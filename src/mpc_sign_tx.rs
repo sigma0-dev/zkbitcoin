@@ -19,6 +19,21 @@ pub struct SmartContract {
     pub vk: Option<()>, // TODO: replace with actual VK type
 }
 
+/// A request from Bob to unlock funds from a smart contract should look like this.
+pub struct BobRequest {
+    /// The transaction ID that deployed the smart contract.
+    pub txid: bitcoin::Txid,
+
+    /// The verifier key authenticated by the deployed transaction.
+    pub vk: (),
+
+    /// A proof.
+    pub proof: (),
+
+    /// Any additional public inputs used in the proof (if any).
+    pub public_inputs: Vec<()>,
+}
+
 /// Extracts smart contract information as a [SmartContract] from a transaction.
 pub fn parse_transaction(raw_tx: &Transaction) -> Result<SmartContract, &'static str> {
     let zkbitcoin_pubkey: PublicKey = PublicKey::from_str(ZKBITCOIN_PUBKEY).unwrap();
@@ -65,21 +80,7 @@ pub fn parse_transaction(raw_tx: &Transaction) -> Result<SmartContract, &'static
     Ok(smart_contract)
 }
 
-/// A request from Bob to unlock funds from a smart contract should look like this.
-pub struct BobRequest {
-    /// The transaction ID that deployed the smart contract.
-    pub txid: bitcoin::Txid,
-
-    /// The verifier key authenticated by the deployed transaction.
-    pub vk: (),
-
-    /// A proof.
-    pub proof: (),
-
-    /// Any additional public inputs used in the proof (if any).
-    pub public_inputs: Vec<()>,
-}
-
+/// Validates a request received from Bob.
 pub fn validate_request(request: BobRequest) -> Result<(), &'static str> {
     // fetch transaction based on txid
     let transaction = todo!();
