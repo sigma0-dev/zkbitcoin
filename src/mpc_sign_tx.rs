@@ -114,7 +114,7 @@ pub fn sign_transaction_schnorr(
 mod tests {
     use std::str::FromStr;
 
-    use bitcoin::Network;
+    use bitcoin::{taproot, Network};
 
     use crate::constants::{ZKBITCOIN_ADDRESS, ZKBITCOIN_PUBKEY};
 
@@ -179,7 +179,7 @@ mod tests {
 
         let fee_bitcoin_sat = 800;
         let fee_zkbitcoin_sat = 200;
-        let tx = create_transaction(
+        let mut tx = create_transaction(
             (txid, vout),
             satoshi_amount,
             bob_address,
@@ -187,13 +187,17 @@ mod tests {
             fee_zkbitcoin_sat,
         );
 
-        println!("{tx:#?}");
-
+        // sign
         let sk = secp256k1::SecretKey::new(&mut rand::thread_rng());
-        let tx = create_dummy_tx();
         let sig = sign_transaction_schnorr(&sk, &tx);
-        println!("{sig:?}");
 
-        // TODO: place signature in witness
+        // place signature in witness
+        let hash_ty = TapSighashType::All;
+        let final_signature = taproot::Signature { sig, hash_ty };
+        let mut witness = Witness::new();
+        witness.push(final_signature.to_vec());
+        tx.input[0].witness = witness;
+
+        println!("{tx:#?}");
     }
 }
