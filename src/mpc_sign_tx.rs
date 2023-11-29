@@ -2,24 +2,26 @@
 //!
 //! MPC-part of the flow.
 
+use std::str::FromStr;
+
 use bitcoin::{
     hashes::{hash160, Hash},
     psbt::raw,
-    PubkeyHash, PublicKey, ScriptBuf, Transaction,
+    Amount, PubkeyHash, PublicKey, ScriptBuf, Transaction,
 };
+
+use crate::constants::ZKBITCOIN_PUBKEY;
 
 /// All the metadata that describes a smart contract.
 pub struct SmartContract {
-    pub locked_value: u64, // TODO: replace with bitcoin::Amount?
+    pub locked_value: Amount,
     pub vk_hash: [u8; 32],
     pub vk: Option<()>, // TODO: replace with actual VK type
 }
 
 /// Extracts smart contract information as a [SmartContract] from a transaction.
 pub fn parse_transaction(raw_tx: &Transaction) -> Result<SmartContract, &'static str> {
-    // TODO: replace with our actual public key hash
-    //    let zkbitcoin_address: PubkeyHash = PubkeyHash::from_raw_hash(hash160::Hash::all_zeros());
-    let zkbitcoin_pubkey: PublicKey = PublicKey::from_slice(&[0; 33]).unwrap();
+    let zkbitcoin_pubkey: PublicKey = PublicKey::from_str(ZKBITCOIN_PUBKEY).unwrap();
 
     // ensure that the first output is to 0xzkBitcoin
     if raw_tx.output.is_empty() {
@@ -56,17 +58,25 @@ pub fn parse_transaction(raw_tx: &Transaction) -> Result<SmartContract, &'static
         .map_err(|_| "first OP_RETURN data is not a 32-byte vk hash")?;
 
     let smart_contract = SmartContract {
-        locked_value: 0,
+        locked_value,
         vk_hash,
         vk: None,
     };
     Ok(smart_contract)
 }
 
+/// A request from Bob to unlock funds from a smart contract should look like this.
 pub struct BobRequest {
+    /// The transaction ID that deployed the smart contract.
     pub txid: bitcoin::Txid,
+
+    /// The verifier key authenticated by the deployed transaction.
     pub vk: (),
+
+    /// A proof.
     pub proof: (),
+
+    /// Any additional public inputs used in the proof (if any).
     pub public_inputs: Vec<()>,
 }
 

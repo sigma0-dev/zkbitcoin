@@ -64,13 +64,21 @@ You can get information about a wallet using:
 bitcoin-cli -testnet -rpcconnect=146.190.33.39 -rpcport=18331 -rpcuser=root -rpcpassword=hellohello -rpcwallet=mywallet getwalletinfo
 ```
 
-Obtain a new public key via:
+Obtain a new address via:
 
 ```shell
 bitcoin-cli -testnet -rpcconnect=146.190.33.39 -rpcport=18331 -rpcuser=root -rpcpassword=hellohello -rpcwallet=mywallet getnewaddress
 ```
 
-I believe we can switch wallets by using the `loadwallet` command.
+(I believe we can switch wallets by using the `loadwallet` command.)
+
+Some addresses I've been using:
 
 * `tb1q5pxn428emp73saglk7ula0yx5j7ehegu6ud6ad` <-- I put some bitcoins in there from [this faucet](https://bitcoinfaucet.uo1.net/send.php) (you can see the wallet on [this explorer](https://blockstream.info/testnet/address/tb1q5pxn428emp73saglk7ula0yx5j7ehegu6ud6ad) where 141 satoshis were paid as fee)
 * `tb1q6nkpv2j9lxrm6h3w4skrny3thswgdcca8cx9k6`
+
+Note that you can get their associated public keys via:
+
+```shell
+bitcoin-cli -testnet -rpcconnect=146.190.33.39 -rpcport=18331 -rpcuser=root -rpcpassword=hellohello -rpcwallet=mywallet getaddressinfo "tb1q5pxn428emp73saglk7ula0yx5j7ehegu6ud6ad"
+```

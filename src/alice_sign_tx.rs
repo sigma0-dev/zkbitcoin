@@ -16,7 +16,9 @@ use reqwest::{
     Client,
 };
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
+use std::{str::FromStr, time::Duration};
+
+use crate::constants::ZKBITCOIN_PUBKEY;
 
 /// The endpoint for our bitcoind full node.
 pub const JSON_RPC_ENDPOINT: &str = "http://146.190.33.39:18331";
@@ -33,16 +35,13 @@ pub async fn generate_and_broadcast_transaction(
     vk: &[u8; 32],
     satoshi_amount: u64,
 ) -> Result<bitcoin::Txid, &'static str> {
-    // TODO: replace with our actual public key hash
-    //let zkbitcoin_address: PubkeyHash = PubkeyHash::from_raw_hash(hash160::Hash::all_zeros());
-    let zkbitcoin_pubkey: PublicKey = PublicKey::from_slice(&[0; 33]).unwrap();
-
     // 1. create transaction based on VK + amount
     // https://developer.bitcoin.org/reference/rpc/createrawtransaction.html
     //
     let (tx, tx_hex) = {
         let mut outputs = vec![];
         // first output is a P2PK to 0xzkBitcoin
+        let zkbitcoin_pubkey: PublicKey = PublicKey::from_str(ZKBITCOIN_PUBKEY).unwrap();
         outputs.push(TxOut {
             value: Amount::from_sat(satoshi_amount),
             script_pubkey: ScriptBuf::new_p2pk(&zkbitcoin_pubkey),
