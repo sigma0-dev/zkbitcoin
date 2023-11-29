@@ -1,3 +1,7 @@
+//! Code related to the Bitcoind JSON RPC interface.
+//! It heavily relies on the jsonrpc and bitcoincore_rpc crates (and its dependencies).
+//! It does not directly make use of these crates due to some issues (loss of information when getting 500 errors from bitcoind).
+
 use base64::{engine::general_purpose, Engine};
 use reqwest::{
     header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE},
