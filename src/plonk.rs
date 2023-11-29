@@ -22,4 +22,26 @@ pub struct VerifierKey {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct Proof {}
+pub struct Proof {
+    A: Vec<String>,
+    B: Vec<String>,
+    C: Vec<String>,
+    Z: Vec<String>,
+    T1: Vec<String>,
+    T2: Vec<String>,
+    T3: Vec<String>,
+    Wxi: Vec<String>,
+    Wxiw: Vec<String>,
+    eval_a: String,
+    eval_b: String,
+    eval_c: String,
+    eval_s1: String,
+    eval_s2: String,
+    eval_zw: String,
+    protocol: String, // "plonk",
+    curve: String,    //"bn128"
+}
+
+/// The public input that has to be used by the verifier
+#[derive(Serialize, Deserialize)]
+pub struct ProofInputs(Vec<String>);
