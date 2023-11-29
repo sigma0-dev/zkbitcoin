@@ -1,7 +1,3 @@
-//! This is Alice's part of the flow, aka the first message.
-//! Alice wants to lock some amount of money, and allow anyone who can run a circuit (authenticated by its verifier key VK) to unlock it.
-//! For this, Alice can send a transaction to 0xzkBitcoin and inscribe the VK.
-
 use bitcoin::{
     absolute::LockTime, transaction::Version, Amount, PublicKey, ScriptBuf, Transaction, TxOut,
 };
@@ -59,7 +55,7 @@ pub async fn generate_and_broadcast_transaction(
     //
     let (raw_tx_with_inputs_hex, _raw_tx_with_inputs) = {
         let response = json_rpc_request(
-            wallet.as_ref().map(String::as_str),
+            wallet.as_deref(),
             "fundrawtransaction",
             &[serde_json::value::to_raw_value(&serde_json::Value::String(tx_hex)).unwrap()],
         )
@@ -82,7 +78,7 @@ pub async fn generate_and_broadcast_transaction(
     //
     let (signed_tx_hex, _signed_tx) = {
         let response = json_rpc_request(
-            wallet.as_ref().map(String::as_str),
+            wallet.as_deref(),
             "signrawtransactionwithwallet",
             &[
                 serde_json::value::to_raw_value(&serde_json::Value::String(raw_tx_with_inputs_hex))
@@ -107,7 +103,7 @@ pub async fn generate_and_broadcast_transaction(
     //
     let txid = {
         let response = json_rpc_request(
-            wallet.as_ref().map(String::as_str),
+            wallet.as_deref(),
             "sendrawtransaction",
             &[serde_json::value::to_raw_value(&serde_json::Value::String(signed_tx_hex)).unwrap()],
         )
@@ -142,13 +138,9 @@ mod tests {
         env_logger::init();
 
         let wallet = Some("mywallet".to_string());
-        let response = json_rpc_request(
-            wallet.as_ref().map(String::as_str),
-            "getblockchaininfo",
-            &[],
-        )
-        .await
-        .unwrap();
+        let response = json_rpc_request(wallet.as_deref(), "getblockchaininfo", &[])
+            .await
+            .unwrap();
 
         println!("{:?}", response);
     }

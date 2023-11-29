@@ -1,12 +1,9 @@
-// https://github.com/rust-bitcoin/rust-bitcoin/issues/294
-//!
-//! MPC-part of the flow.
-
 use std::str::FromStr;
 
 use bitcoin::{Amount, PublicKey, Transaction};
 
 use crate::{
+    bob_request::BobRequest,
     constants::{MINIMUM_CONFIRMATIONS, ZKBITCOIN_PUBKEY},
     json_rpc_stuff::json_rpc_request,
 };
@@ -16,21 +13,6 @@ pub struct SmartContract {
     pub locked_value: Amount,
     pub vk_hash: [u8; 32],
     pub vk: Option<()>, // TODO: replace with actual VK type
-}
-
-/// A request from Bob to unlock funds from a smart contract should look like this.
-pub struct BobRequest {
-    /// The transaction ID that deployed the smart contract.
-    pub txid: bitcoin::Txid,
-
-    /// The verifier key authenticated by the deployed transaction.
-    pub vk: (),
-
-    /// A proof.
-    pub proof: (),
-
-    /// Any additional public inputs used in the proof (if any).
-    pub public_inputs: Vec<()>,
 }
 
 /// Extracts smart contract information as a [SmartContract] from a transaction.

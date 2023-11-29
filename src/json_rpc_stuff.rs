@@ -26,7 +26,7 @@ pub async fn json_rpc_request<'a>(
         // I don't think that field is useful (https://www.jsonrpc.org/specification_v1)
         id: serde_json::Value::String("whatevs".to_string()),
         method,
-        params: params,
+        params,
     };
     let body = serde_json::to_string(&request).unwrap();
     let user_n_pw = general_purpose::STANDARD.encode(JSON_RPC_AUTH);
