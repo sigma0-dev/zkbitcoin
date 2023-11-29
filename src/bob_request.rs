@@ -1,11 +1,10 @@
 use std::{
     fs::{remove_dir_all, File},
-    io::Write,
     process::Command,
     str::FromStr,
 };
 
-use bitcoin::{sighash, Amount, PublicKey, Transaction};
+use bitcoin::{Amount, PublicKey, Transaction};
 use serde::{Deserialize, Serialize};
 use tempdir::TempDir;
 
@@ -65,9 +64,6 @@ pub fn parse_transaction(raw_tx: &Transaction) -> Result<SmartContract, &'static
             let unlock_script = output.script_pubkey.as_bytes();
             let data = unlock_script[1..].to_vec();
             op_return_outputs.push(data);
-        } else {
-            // break at the first non-OP_RETURN output
-            break;
         }
     }
 
