@@ -19,25 +19,32 @@ pub struct SmartContract {
 pub fn parse_transaction(raw_tx: &Transaction) -> Result<SmartContract, &'static str> {
     let zkbitcoin_pubkey: PublicKey = PublicKey::from_str(ZKBITCOIN_PUBKEY).unwrap();
 
-    // ensure that the first output is to 0xzkBitcoin
-    if raw_tx.output.is_empty() {
-        return Err("Transaction has no outputs");
-    }
-
-    // validate the first output and extract amount
-    let zkbitcoin_output = &raw_tx.output[0];
-    if zkbitcoin_output.script_pubkey.as_script().p2pk_public_key() != Some(zkbitcoin_pubkey) {
-        return Err("Transaction's first output is not to 0xzkBitcoin");
-    }
-    let locked_value = zkbitcoin_output.value;
+    // ensure that the first or second output is to 0xzkBitcoin and extract amount
+    let mut outputs = raw_tx.output.iter();
+    let locked_value = {
+        let output = outputs.next().ok_or("tx has no output")?;
+        if output.script_pubkey.as_script().p2pk_public_key() != Some(zkbitcoin_pubkey) {
+            // the first output must have been the change, moving on to the second output
+            let output = outputs.next().ok_or("tx has no output")?;
+            if output.script_pubkey.as_script().p2pk_public_key() != Some(zkbitcoin_pubkey) {
+                return Err("Transaction's first or second output must be for 0xzkBitcoin");
+            }
+            let locked_value = output.value;
+        } else {
+            let locked_value = output.value;
+        }
+    };
 
     // create a list of all the outputs following that one that are OP_RETURN outputs
     let mut op_return_outputs = vec![];
-    for output in raw_tx.output.iter().skip(1) {
+    for output in outputs {
         if output.script_pubkey.is_op_return() {
             let unlock_script = output.script_pubkey.as_bytes();
             let data = unlock_script[1..].to_vec();
             op_return_outputs.push(data);
+        } else {
+            // break at the first non-OP_RETURN output
+            break;
         }
     }
 
@@ -101,6 +108,8 @@ pub async fn validate_request(request: BobRequest) -> Result<(), &'static str> {
     // TODO: ensure that number public inputs <= vk.num_public_inputs
 
     // TODO: ensure that the hash of the VK correctly gives us the vk_hash
+
+    // TODO: verify proof
     Ok(())
 }
 
