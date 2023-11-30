@@ -96,8 +96,7 @@ pub async fn generate_and_broadcast_transaction(
     // 4. broadcast transaction
     // https://developer.bitcoin.org/reference/rpc/sendrawtransaction.html
     //
-    let txid =
-        send_raw_transaction(TransactionOrHex::Hex(signed_tx_hex), wallet.as_deref()).await?;
+    let txid = send_raw_transaction(TransactionOrHex::Hex(signed_tx_hex)).await?;
 
     //
     Ok(txid)

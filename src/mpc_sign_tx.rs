@@ -113,11 +113,16 @@ pub fn sign_transaction_schnorr(
 mod tests {
     use std::str::FromStr;
 
-    use bitcoin::{taproot, Network, Script};
+    use bitcoin::{taproot, Network, PrivateKey, Script};
+    use rand::prelude::*;
+    use rand_chacha::ChaCha20Rng;
 
     use crate::{
         constants::{ZKBITCOIN_ADDRESS, ZKBITCOIN_PUBKEY},
-        json_rpc_stuff::json_rpc_request,
+        json_rpc_stuff::{
+            fund_raw_transaction, json_rpc_request, send_raw_transaction, sign_transaction,
+            TransactionOrHex,
+        },
     };
 
     use super::*;
@@ -165,19 +170,82 @@ mod tests {
         (tx, prevouts)
     }
 
-    #[test]
-    fn test_sign_tx() {
-        let sk = secp256k1::SecretKey::new(&mut rand::thread_rng());
-        let (tx, prevouts) = create_dummy_tx();
-        let sig = sign_transaction_schnorr(&sk, &tx, &prevouts);
-        println!("{sig:?}");
+    /*
+    - privkey: b2f7f581d6de3c06a822fd6e7e8265fbc00f8401696a5bdc34f5a6d2ff3f922f
+    - status_code: 200
+    - funded tx (in hex): 0200000001ea94c02f7ab26326aa459d5000416285313fdbab95c85b78dcefa41b2d35380a0200000000fdffffff02e803000000000000225120814c57829b8c1af9956a23a9d687779469b1d7c06ebecac01f81922761331ea41e120000000000002251201d6f50ea71d3a10bd02e206a319b7e300d73363c8aa38de70e61857f1992d91c00000000
+    - status_code: 200
+    - signed tx (in hex): 02000000000101ea94c02f7ab26326aa459d5000416285313fdbab95c85b78dcefa41b2d35380a0200000000fdffffff02e803000000000000225120814c57829b8c1af9956a23a9d687779469b1d7c06ebecac01f81922761331ea41e120000000000002251201d6f50ea71d3a10bd02e206a319b7e300d73363c8aa38de70e61857f1992d91c014098abe19b55ab3fb450c75f1cbead91a6eb55c130c7c8162d26e882ead282a34181b929628a1a165eacb7b4942dc43ccdaa6c57192a6e7f947b7c5d31f683a94f00000000
+    - status_code: 200
+    - txid broadcast to the network: 02fcc5b458ff032d4c82b12ce8c1c4c5b88c91bd7953bb2cdbb212f3219e91c3
+    - on an explorer: https://blockstream.info/testnet/tx/02fcc5b458ff032d4c82b12ce8c1c4c5b88c91bd7953bb2cdbb212f3219e91c3
+    - txid: 02fcc5b458ff032d4c82b12ce8c1c4c5b88c91bd7953bb2cdbb212f3219e91c3
+     */
+    #[tokio::test]
+    #[ignore = "I used this to send a p2tr transaction on the network to a known private key"]
+    async fn test_p2tr() {
+        // let's create a keypair and expose the privkey and pubkey
+        let secp = secp256k1::Secp256k1::default();
+        // seeded rand with 0
+        let rng = &mut ChaCha20Rng::seed_from_u64(0);
+
+        let sk = secp256k1::SecretKey::new(rng);
+        //let pubkey = secp256k1::PublicKey::from_secret_key(&secp, &sk);
+        let private_key = PrivateKey::new(sk, Network::Testnet);
+        let pubkey = PublicKey::from_private_key(&secp, &private_key);
+        let untweaked = UntweakedPublicKey::from(pubkey);
+        //        let tweaked = untweaked.add_tweak(&secp, &secp256k1::Scalar::ONE);
+
+        // make sure we can recover the private key
+        {
+            println!("- privkey: {}", hex::encode(sk.secret_bytes()));
+            let sk2 = secp256k1::SecretKey::from_str(
+                "b2f7f581d6de3c06a822fd6e7e8265fbc00f8401696a5bdc34f5a6d2ff3f922f",
+            )
+            .unwrap();
+            assert_eq!(sk, sk2);
+        }
+
+        //        let (tx, prevouts) = create_dummy_tx();
+        //        let sig = sign_transaction_schnorr(&sk, &tx, &prevouts);
+        //        println!("{sig:?}");
+
+        // create empty transaction that sends to a p2tr from our wallet
+        let tx = Transaction {
+            version: Version::TWO,
+            lock_time: LockTime::ZERO, // no lock time
+            input: vec![],
+            output: vec![TxOut {
+                value: Amount::from_sat(1000),
+                script_pubkey: ScriptBuf::new_p2tr(&secp, untweaked, None),
+            }],
+        };
+
+        // fund that transaction with our wallet
+        let (tx_hex, _) =
+            fund_raw_transaction(TransactionOrHex::Transaction(&tx), Some("mywallet"))
+                .await
+                .unwrap();
+
+        // sign that transaction with our wallet
+        let (tx_hex, _) = sign_transaction(TransactionOrHex::Hex(tx_hex), Some("mywallet"))
+            .await
+            .unwrap();
+
+        // broadcast it
+        let txid = send_raw_transaction(TransactionOrHex::Hex(tx_hex))
+            .await
+            .unwrap();
+
+        println!("- txid: {txid}");
     }
 
     #[tokio::test]
+    #[ignore = "I'm trying to use this to spend the p2tr created in the previous test"]
     async fn test_real_tx() {
-        // txid from https://blockstream.info/testnet/tx/0a38352d1ba4efdc785bc895abdb3f3185624100509d45aa2663b27a2fc094ea?expand
+        // txid from https://blockstream.info/testnet/tx/02fcc5b458ff032d4c82b12ce8c1c4c5b88c91bd7953bb2cdbb212f3219e91c3?expand
         let txid =
-            Txid::from_str("0a38352d1ba4efdc785bc895abdb3f3185624100509d45aa2663b27a2fc094ea")
+            Txid::from_str("02fcc5b458ff032d4c82b12ce8c1c4c5b88c91bd7953bb2cdbb212f3219e91c3")
                 .unwrap();
         let vout = 0;
         let satoshi_amount = 1000;
@@ -201,13 +269,16 @@ mod tests {
         let prevouts = vec![TxOut {
             value: Amount::from_sat(satoshi_amount),
             script_pubkey: ScriptBuf::from_hex(
-                "512090e20d73215401a858439c988efebc1a3cc999377b7d38a790e0f844b4d0cd9b",
+                "5120814c57829b8c1af9956a23a9d687779469b1d7c06ebecac01f81922761331ea4",
             )
             .unwrap(),
         }];
 
         // sign
-        let sk = secp256k1::SecretKey::new(&mut rand::thread_rng());
+        let sk = secp256k1::SecretKey::from_str(
+            "b2f7f581d6de3c06a822fd6e7e8265fbc00f8401696a5bdc34f5a6d2ff3f922f",
+        )
+        .unwrap();
         let sig = sign_transaction_schnorr(&sk, &tx, &prevouts);
 
         // place signature in witness
@@ -220,26 +291,8 @@ mod tests {
         println!("{tx:#?}");
 
         // broadcast transaction
-        let txid = {
-            let signed_tx_hex = bitcoin::consensus::encode::serialize_hex(&tx);
-            let response = json_rpc_request(
-                Some("mywallet"),
-                "sendrawtransaction",
-                &[
-                    serde_json::value::to_raw_value(&serde_json::Value::String(signed_tx_hex))
-                        .unwrap(),
-                ],
-            )
+        let _txid = send_raw_transaction(TransactionOrHex::Transaction(&tx))
             .await
             .unwrap();
-            println!("{:?}", response);
-
-            let response: jsonrpc::Response = serde_json::from_str(&response).unwrap();
-            let txid: bitcoin::Txid = response.result().unwrap();
-            println!("- txid broadcast to the network: {txid}");
-            println!("- on an explorer: https://blockstream.info/testnet/tx/{txid}");
-
-            txid
-        };
     }
 }

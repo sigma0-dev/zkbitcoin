@@ -127,17 +127,14 @@ pub async fn sign_transaction<'a>(
     Ok((actual_hex, tx))
 }
 
-pub async fn send_raw_transaction<'a>(
-    tx: TransactionOrHex<'a>,
-    wallet: Option<&str>,
-) -> Result<Txid, &'static str> {
+pub async fn send_raw_transaction<'a>(tx: TransactionOrHex<'a>) -> Result<Txid, &'static str> {
     let tx_hex = match tx {
         TransactionOrHex::Hex(hex) => hex,
         TransactionOrHex::Transaction(tx) => bitcoin::consensus::encode::serialize_hex(tx),
     };
 
     let response = json_rpc_request(
-        wallet,
+        None,
         "sendrawtransaction",
         &[serde_json::value::to_raw_value(&serde_json::Value::String(tx_hex)).unwrap()],
     )
