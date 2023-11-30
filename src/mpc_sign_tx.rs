@@ -127,49 +127,6 @@ mod tests {
 
     use super::*;
 
-    fn create_dummy_tx() -> (Transaction, Vec<TxOut>) {
-        let zkbitcoin_pubkey: PublicKey = PublicKey::from_str(ZKBITCOIN_PUBKEY).unwrap();
-
-        // cfg
-        let satoshi_amount = 1000;
-
-        // prevout is a single output that we will then spend
-        let secp = secp256k1::Secp256k1::default();
-        let internal_key = UntweakedPublicKey::from(zkbitcoin_pubkey);
-        let pubkey = ScriptBuf::new_p2tr(&secp, internal_key, None);
-        let prevouts = vec![TxOut {
-            value: Amount::from_sat(satoshi_amount),
-            script_pubkey: pubkey.clone(),
-        }];
-
-        // first input is a P2TR
-        let input = vec![TxIn {
-            previous_output: OutPoint {
-                txid: Txid::all_zeros(),
-                vout: 0,
-            },
-            script_sig: ScriptBuf::new(),
-            sequence: Sequence::MAX,
-            witness: Witness::new(),
-        }];
-
-        // first output is a P2TR as well
-        let output = vec![TxOut {
-            value: Amount::from_sat(satoshi_amount),
-            script_pubkey: pubkey,
-        }];
-
-        let tx = Transaction {
-            version: Version::TWO,
-            lock_time: LockTime::ZERO, // no lock time
-            // we don't need to specify inputs at this point, the wallet will fill that for us
-            input,
-            output,
-        };
-
-        (tx, prevouts)
-    }
-
     /*
     - privkey: b2f7f581d6de3c06a822fd6e7e8265fbc00f8401696a5bdc34f5a6d2ff3f922f
     - status_code: 200
@@ -294,5 +251,18 @@ mod tests {
         let _txid = send_raw_transaction(TransactionOrHex::Transaction(&tx))
             .await
             .unwrap();
+    }
+
+    #[test]
+    fn can_we_deserialize_taproot_addresses() {
+        let address =
+            Address::from_str("bc1p0dq0tzg2r780hldthn5mrznmpxsxc0jux5f20fwj0z3wqxxk6fpqm7q0va")
+                .expect("a valid address")
+                .require_network(Network::Bitcoin)
+                .expect("valid address for mainnet");
+
+        println!("{:?}", address.address_type());
+
+        println!("{:?}", address.script_pubkey());
     }
 }
