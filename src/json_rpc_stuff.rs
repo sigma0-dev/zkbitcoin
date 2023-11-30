@@ -3,11 +3,16 @@
 //! It does not directly make use of these crates due to some issues (loss of information when getting 500 errors from bitcoind).
 
 use base64::{engine::general_purpose, Engine};
+use bitcoin::{Transaction, Txid};
 use reqwest::{
     header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE},
     Client,
 };
 use std::time::Duration;
+
+//
+// Main JSON RPC request function
+//
 
 /// The endpoint for our bitcoind full node.
 pub const JSON_RPC_ENDPOINT: &str = "http://146.190.33.39:18331";
@@ -55,4 +60,95 @@ pub async fn json_rpc_request<'a>(
         .await?;
     println!("- status_code: {:?}", &response.status().as_u16());
     response.text().await
+}
+
+//
+// Helpers around useful Bitcoin RPC functions
+//
+
+pub enum TransactionOrHex<'a> {
+    Hex(String),
+    Transaction(&'a Transaction),
+}
+
+pub async fn fund_raw_transaction<'a>(
+    tx: TransactionOrHex<'a>,
+    wallet: Option<&str>,
+) -> Result<(String, Transaction), &'static str> {
+    let tx_hex = match tx {
+        TransactionOrHex::Hex(hex) => hex,
+        TransactionOrHex::Transaction(tx) => bitcoin::consensus::encode::serialize_hex(tx),
+    };
+
+    let response = json_rpc_request(
+        wallet,
+        "fundrawtransaction",
+        &[serde_json::value::to_raw_value(&serde_json::Value::String(tx_hex)).unwrap()],
+    )
+    .await
+    .map_err(|_| "TODO: real error")?;
+
+    // TODO: get rid of unwrap in here
+    let response: jsonrpc::Response = serde_json::from_str(&response).unwrap();
+    let parsed: bitcoincore_rpc::json::FundRawTransactionResult = response.result().unwrap();
+    let tx: Transaction = bitcoin::consensus::encode::deserialize(&parsed.hex).unwrap();
+    let actual_hex = hex::encode(&parsed.hex);
+    //println!("- funded tx: {tx:?}");
+    println!("- funded tx (in hex): {actual_hex}");
+
+    Ok((actual_hex, tx))
+}
+
+pub async fn sign_transaction<'a>(
+    tx: TransactionOrHex<'a>,
+    wallet: Option<&str>,
+) -> Result<(String, Transaction), &'static str> {
+    let tx_hex = match tx {
+        TransactionOrHex::Hex(hex) => hex,
+        TransactionOrHex::Transaction(tx) => bitcoin::consensus::encode::serialize_hex(tx),
+    };
+
+    let response = json_rpc_request(
+        wallet,
+        "signrawtransactionwithwallet",
+        &[serde_json::value::to_raw_value(&serde_json::Value::String(tx_hex)).unwrap()],
+    )
+    .await
+    .map_err(|_| "TODO: real error")?;
+
+    // TODO: get rid of unwrap in here
+    let response: jsonrpc::Response = serde_json::from_str(&response).unwrap();
+    let parsed: bitcoincore_rpc::json::SignRawTransactionResult = response.result().unwrap();
+    let tx: Transaction = bitcoin::consensus::encode::deserialize(&parsed.hex).unwrap();
+    let actual_hex = hex::encode(&parsed.hex);
+    //println!("- signed tx: {tx:?}");
+    println!("- signed tx (in hex): {actual_hex}");
+
+    Ok((actual_hex, tx))
+}
+
+pub async fn send_raw_transaction<'a>(
+    tx: TransactionOrHex<'a>,
+    wallet: Option<&str>,
+) -> Result<Txid, &'static str> {
+    let tx_hex = match tx {
+        TransactionOrHex::Hex(hex) => hex,
+        TransactionOrHex::Transaction(tx) => bitcoin::consensus::encode::serialize_hex(tx),
+    };
+
+    let response = json_rpc_request(
+        wallet,
+        "sendrawtransaction",
+        &[serde_json::value::to_raw_value(&serde_json::Value::String(tx_hex)).unwrap()],
+    )
+    .await
+    .map_err(|_| "TODO: real error")?;
+
+    // TODO: get rid of unwrap in here
+    let response: jsonrpc::Response = serde_json::from_str(&response).unwrap();
+    let txid: bitcoin::Txid = response.result().unwrap();
+    println!("- txid broadcast to the network: {txid}");
+    println!("- on an explorer: https://blockstream.info/testnet/tx/{txid}");
+
+    Ok(txid)
 }

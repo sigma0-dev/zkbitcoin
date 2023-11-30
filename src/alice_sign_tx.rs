@@ -1,99 +1,14 @@
 use std::str::FromStr;
 
 use bitcoin::key::UntweakedPublicKey;
-use bitcoin::Txid;
 use bitcoin::{
     absolute::LockTime, transaction::Version, Amount, PublicKey, ScriptBuf, Transaction, TxOut,
 };
 
-use crate::{constants::ZKBITCOIN_PUBKEY, json_rpc_stuff::json_rpc_request};
-
-pub enum TransactionOrHex<'a> {
-    Hex(String),
-    Transaction(&'a Transaction),
-}
-
-pub async fn fund_raw_transaction<'a>(
-    tx: TransactionOrHex<'a>,
-    wallet: Option<&str>,
-) -> Result<(String, Transaction), &'static str> {
-    let tx_hex = match tx {
-        TransactionOrHex::Hex(hex) => hex,
-        TransactionOrHex::Transaction(tx) => bitcoin::consensus::encode::serialize_hex(tx),
-    };
-
-    let response = json_rpc_request(
-        wallet,
-        "fundrawtransaction",
-        &[serde_json::value::to_raw_value(&serde_json::Value::String(tx_hex)).unwrap()],
-    )
-    .await
-    .map_err(|_| "TODO: real error")?;
-
-    // TODO: get rid of unwrap in here
-    let response: jsonrpc::Response = serde_json::from_str(&response).unwrap();
-    let parsed: bitcoincore_rpc::json::FundRawTransactionResult = response.result().unwrap();
-    let tx: Transaction = bitcoin::consensus::encode::deserialize(&parsed.hex).unwrap();
-    let actual_hex = hex::encode(&parsed.hex);
-    //println!("- funded tx: {tx:?}");
-    println!("- funded tx (in hex): {actual_hex}");
-
-    Ok((actual_hex, tx))
-}
-
-pub async fn sign_transaction<'a>(
-    tx: TransactionOrHex<'a>,
-    wallet: Option<&str>,
-) -> Result<(String, Transaction), &'static str> {
-    let tx_hex = match tx {
-        TransactionOrHex::Hex(hex) => hex,
-        TransactionOrHex::Transaction(tx) => bitcoin::consensus::encode::serialize_hex(tx),
-    };
-
-    let response = json_rpc_request(
-        wallet,
-        "signrawtransactionwithwallet",
-        &[serde_json::value::to_raw_value(&serde_json::Value::String(tx_hex)).unwrap()],
-    )
-    .await
-    .map_err(|_| "TODO: real error")?;
-
-    // TODO: get rid of unwrap in here
-    let response: jsonrpc::Response = serde_json::from_str(&response).unwrap();
-    let parsed: bitcoincore_rpc::json::SignRawTransactionResult = response.result().unwrap();
-    let tx: Transaction = bitcoin::consensus::encode::deserialize(&parsed.hex).unwrap();
-    let actual_hex = hex::encode(&parsed.hex);
-    //println!("- signed tx: {tx:?}");
-    println!("- signed tx (in hex): {actual_hex}");
-
-    Ok((actual_hex, tx))
-}
-
-pub async fn send_raw_transaction<'a>(
-    tx: TransactionOrHex<'a>,
-    wallet: Option<&str>,
-) -> Result<Txid, &'static str> {
-    let tx_hex = match tx {
-        TransactionOrHex::Hex(hex) => hex,
-        TransactionOrHex::Transaction(tx) => bitcoin::consensus::encode::serialize_hex(tx),
-    };
-
-    let response = json_rpc_request(
-        wallet,
-        "sendrawtransaction",
-        &[serde_json::value::to_raw_value(&serde_json::Value::String(tx_hex)).unwrap()],
-    )
-    .await
-    .map_err(|_| "TODO: real error")?;
-
-    // TODO: get rid of unwrap in here
-    let response: jsonrpc::Response = serde_json::from_str(&response).unwrap();
-    let txid: bitcoin::Txid = response.result().unwrap();
-    println!("- txid broadcast to the network: {txid}");
-    println!("- on an explorer: https://blockstream.info/testnet/tx/{txid}");
-
-    Ok(txid)
-}
+use crate::constants::ZKBITCOIN_PUBKEY;
+use crate::json_rpc_stuff::{
+    fund_raw_transaction, send_raw_transaction, sign_transaction, TransactionOrHex,
+};
 
 /// Generates and broadcasts a transaction to the network.
 /// Specifically, this sends a transaction to 0xzkBitcoin, for some given amount in satoshis,
@@ -192,7 +107,7 @@ pub async fn generate_and_broadcast_transaction(
 mod tests {
     use bitcoincore_rpc::RpcApi;
 
-    use crate::json_rpc_stuff::JSON_RPC_ENDPOINT;
+    use crate::json_rpc_stuff::{json_rpc_request, JSON_RPC_ENDPOINT};
 
     use super::*;
 
