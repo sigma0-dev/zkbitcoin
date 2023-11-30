@@ -154,7 +154,7 @@ pub async fn validate_request(
     }
 
     // ensure that the hash of the VK correctly gives us the vk_hash
-    if &smart_contract.vk_hash[..] != request.vk.hash() {
+    if smart_contract.vk_hash[..] != request.vk.hash() {
         return Err("VK does not match the VK hash in the smart contract");
     }
 

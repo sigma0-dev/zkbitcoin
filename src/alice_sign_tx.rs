@@ -45,7 +45,7 @@ pub async fn generate_and_broadcast_transaction(
         outputs.push(tx_out);
         // second output is VK
         {
-            let script_pubkey = ScriptBuf::new_op_return(&vk_hash);
+            let script_pubkey = ScriptBuf::new_op_return(vk_hash);
             let value = script_pubkey.dust_value();
             outputs.push(TxOut {
                 value,

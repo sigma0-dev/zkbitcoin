@@ -60,13 +60,12 @@ pub fn create_transaction(
         outputs
     };
 
-    let tx = Transaction {
+    Transaction {
         version: Version::TWO,
         lock_time: LockTime::ZERO, // no lock time
         input: inputs,
         output: outputs,
-    };
-    tx
+    }
 }
 
 pub fn sign_transaction_schnorr(
@@ -76,7 +75,7 @@ pub fn sign_transaction_schnorr(
 ) -> secp256k1::schnorr::Signature {
     // key
     let secp = &secp256k1::Secp256k1::new();
-    let keypair = secp256k1::Keypair::from_secret_key(secp, &sk);
+    let keypair = secp256k1::Keypair::from_secret_key(secp, sk);
     let (internal_key, _parity) = XOnlyPublicKey::from_keypair(&keypair);
     let tweak = TapTweakHash::from_key_and_tweak(internal_key, None);
     let tweaked_keypair = keypair.add_xonly_tweak(secp, &tweak.to_scalar()).unwrap();
@@ -104,24 +103,21 @@ pub fn sign_transaction_schnorr(
         .taproot_signature_hash(tx_ind, &Prevouts::All(prevouts), None, None, hash_ty)
         .unwrap();
     let msg = secp256k1::Message::from_digest(sighash.to_byte_array());
-    let key_spend_sig = secp.sign_schnorr_with_aux_rand(&msg, &tweaked_keypair, &[0u8; 32]);
-
-    key_spend_sig
+    secp.sign_schnorr_with_aux_rand(&msg, &tweaked_keypair, &[0u8; 32])
 }
 
 #[cfg(test)]
 mod tests {
     use std::str::FromStr;
 
-    use bitcoin::{taproot, Network, PrivateKey, Script};
+    use bitcoin::{taproot, Network, PrivateKey};
     use rand::prelude::*;
     use rand_chacha::ChaCha20Rng;
 
     use crate::{
-        constants::{ZKBITCOIN_ADDRESS, ZKBITCOIN_PUBKEY},
+        constants::ZKBITCOIN_ADDRESS,
         json_rpc_stuff::{
-            fund_raw_transaction, json_rpc_request, send_raw_transaction, sign_transaction,
-            TransactionOrHex,
+            fund_raw_transaction, send_raw_transaction, sign_transaction, TransactionOrHex,
         },
     };
 
