@@ -115,7 +115,10 @@ mod tests {
 
     use bitcoin::{taproot, Network, Script};
 
-    use crate::constants::{ZKBITCOIN_ADDRESS, ZKBITCOIN_PUBKEY};
+    use crate::{
+        constants::{ZKBITCOIN_ADDRESS, ZKBITCOIN_PUBKEY},
+        json_rpc_stuff::json_rpc_request,
+    };
 
     use super::*;
 
@@ -170,8 +173,8 @@ mod tests {
         println!("{sig:?}");
     }
 
-    #[test]
-    fn test_real_tx() {
+    #[tokio::test]
+    async fn test_real_tx() {
         // txid from https://blockstream.info/testnet/tx/0a38352d1ba4efdc785bc895abdb3f3185624100509d45aa2663b27a2fc094ea?expand
         let txid =
             Txid::from_str("0a38352d1ba4efdc785bc895abdb3f3185624100509d45aa2663b27a2fc094ea")
@@ -215,5 +218,28 @@ mod tests {
         tx.input[0].witness = witness;
 
         println!("{tx:#?}");
+
+        // broadcast transaction
+        let txid = {
+            let signed_tx_hex = bitcoin::consensus::encode::serialize_hex(&tx);
+            let response = json_rpc_request(
+                Some("mywallet"),
+                "sendrawtransaction",
+                &[
+                    serde_json::value::to_raw_value(&serde_json::Value::String(signed_tx_hex))
+                        .unwrap(),
+                ],
+            )
+            .await
+            .unwrap();
+            println!("{:?}", response);
+
+            let response: jsonrpc::Response = serde_json::from_str(&response).unwrap();
+            let txid: bitcoin::Txid = response.result().unwrap();
+            println!("- txid broadcast to the network: {txid}");
+            println!("- on an explorer: https://blockstream.info/testnet/tx/{txid}");
+
+            txid
+        };
     }
 }
