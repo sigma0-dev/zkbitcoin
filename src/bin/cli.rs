@@ -149,12 +149,11 @@ async fn main() {
             public_inputs_path,
             satoshi_amount,
         } => {
-            let current_dir = PathBuf::from(env::current_dir().unwrap());
             let ctx = RpcCtx::new(wallet.clone(), address.clone(), auth.clone());
 
             let (vk, vk_hash) = {
                 // open vk file
-                let full_path = current_dir.join(verifier_key_path);
+                let full_path = PathBuf::from(verifier_key_path);
                 let file = std::fs::File::open(full_path).expect("file not found");
                 let vk: plonk::VerifierKey =
                     serde_json::from_reader(file).expect("error while reading file");
@@ -169,7 +168,7 @@ async fn main() {
             let mut public_inputs = vec![];
             if let Some(path) = public_inputs_path {
                 // open public_inputs file
-                let full_path = current_dir.join(path);
+                let full_path = PathBuf::from(path);
                 let file = std::fs::File::open(&full_path)
                     .unwrap_or_else(|_| panic!("file not found at path: {:?}", full_path));
 
@@ -218,23 +217,21 @@ async fn main() {
             proof_inputs_path,
             proof_path,
         } => {
-            let current_dir = PathBuf::from(env::current_dir().unwrap());
-
             // get proof, vk, and inputs
             let proof: plonk::Proof = {
-                let full_path = current_dir.join(proof_path);
+                let full_path = PathBuf::from(proof_path);
                 let file = std::fs::File::open(&full_path)
                     .unwrap_or_else(|_| panic!("file not found at path: {:?}", full_path));
                 serde_json::from_reader(file).expect("error while reading file")
             };
             let vk: plonk::VerifierKey = {
-                let full_path = current_dir.join(verifier_key_path);
+                let full_path = PathBuf::from(verifier_key_path);
                 let file = std::fs::File::open(&full_path)
                     .unwrap_or_else(|_| panic!("file not found at path: {:?}", full_path));
                 serde_json::from_reader(file).expect("error while reading file")
             };
             let public_inputs: Vec<String> = if let Some(path) = proof_inputs_path {
-                let full_path = current_dir.join(path);
+                let full_path = PathBuf::from(path);
                 let file = std::fs::File::open(&full_path)
                     .unwrap_or_else(|_| panic!("file not found at path: {:?}", full_path));
                 let proof_inputs: plonk::ProofInputs =
@@ -291,11 +288,10 @@ async fn main() {
             key_path,
             publickey_package_path,
         } => {
-            let current_dir = PathBuf::from(env::current_dir().unwrap());
             let ctx = RpcCtx::new(wallet.clone(), address.clone(), auth.clone());
 
             let key = {
-                let full_path = current_dir.join(key_path);
+                let full_path = PathBuf::from(key_path);
                 let file = std::fs::File::open(full_path).expect("file not found");
                 let key: frost::KeyPackage =
                     serde_json::from_reader(file).expect("error while reading file");
@@ -303,7 +299,7 @@ async fn main() {
             };
 
             let publickey_package = {
-                let full_path = current_dir.join(publickey_package_path);
+                let full_path = PathBuf::from(publickey_package_path);
                 let file = std::fs::File::open(full_path).expect("file not found");
                 let publickey_package: frost::PublicKeyPackage =
                     serde_json::from_reader(file).expect("error while reading file");
