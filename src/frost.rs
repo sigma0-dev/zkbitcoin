@@ -1,8 +1,9 @@
 use frost_secp256k1 as frost;
 use rand::{thread_rng, RngCore};
-use std::collections::{BTreeMap, HashMap};
-use frost_secp256k1::VerifyingKey;
 use secp256k1::XOnlyPublicKey;
+use std::collections::{BTreeMap, HashMap};
+
+pub use frost::keys::{KeyPackage, PublicKeyPackage};
 
 //
 // copy/paste from their example
@@ -102,7 +103,10 @@ fn example() -> Result<(), frost::Error> {
 // Functions to test our flow
 //
 
-pub fn gen_frost_keys(max_signers: u16, min_signers: u16) -> Result<
+pub fn gen_frost_keys(
+    max_signers: u16,
+    min_signers: u16,
+) -> Result<
     (
         HashMap<frost::Identifier, frost::keys::KeyPackage>,
         frost::keys::PublicKeyPackage,
@@ -232,7 +236,7 @@ pub fn gen_frost_keys(max_signers: u16, min_signers: u16) -> Result<
     ))
 }
 
-pub fn to_xonly_pubkey(verifying_key: &VerifyingKey) -> XOnlyPublicKey {
+pub fn to_xonly_pubkey(verifying_key: &frost::VerifyingKey) -> XOnlyPublicKey {
     let serialized_pubkey = verifying_key.serialize();
     XOnlyPublicKey::from_slice(&serialized_pubkey[1..]).unwrap()
 }
@@ -313,9 +317,9 @@ fn sign(
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use frost_secp256k1::VerifyingKey;
     use secp256k1::XOnlyPublicKey;
-    use super::*;
 
     pub fn get_private_and_public() -> (frost::SigningKey, frost::VerifyingKey) {
         let rng = &mut thread_rng();

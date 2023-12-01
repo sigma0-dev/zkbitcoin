@@ -1,8 +1,10 @@
 use std::{env, path::PathBuf, str::FromStr};
 
 use clap::{Parser, Subcommand};
-use frost_secp256k1 as frost;
-use zkbitcoin::{alice_sign_tx::generate_and_broadcast_transaction, json_rpc_stuff::RpcCtx, plonk};
+use frost_secp256k1::Identifier;
+use zkbitcoin::{
+    alice_sign_tx::generate_and_broadcast_transaction, frost, json_rpc_stuff::RpcCtx, plonk,
+};
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -76,13 +78,18 @@ enum Commands {
         proof_path: String,
     },
 
-    GenerateCommitteeConfigurationsAsDealer {
+    /// Generates an MPC committee via a trusted dealer.
+    /// Ideally this is just used for testing as it is more secure to do a DKG.
+    GenerateCommittee {
+        /// Number of nodes in the committee.
         #[arg(short, long)]
-        max_signers: usize,
+        num: u16,
 
+        /// Minimum number of committee member required for a signature.
         #[arg(short, long)]
-        min_signers: usize,
+        threshold: u16,
 
+        /// Output directory to write the committee configuration files to.
         #[arg(short, long)]
         output_dir: String,
     },
@@ -251,20 +258,30 @@ async fn main() {
             todo!();
         }
 
-        Commands::GenerateCommitteeConfigurationsAsDealer {
-            max_signers,
-            min_signers,
+        Commands::GenerateCommittee {
+            num,
+            threshold,
             output_dir,
         } => {
             let output_dir = PathBuf::from(output_dir);
+            //            output_dir.is_relative();
 
-            let committee_configurations = todo!();
+            let (key_packages, pubkey_package) = frost::gen_frost_keys(*num, *threshold).unwrap();
 
-            // for (i, config) in committee_configurations.iter().enumerate() {
-            //     let path = output_dir.join(format!("committee_config_{}.json", i));
-            //     let file = std::fs::File::create(&path).unwrap();
-            //     serde_json::to_writer_pretty(file, config).unwrap();
-            // }
+            // all key packages
+            for (id, key_package) in key_packages.values().enumerate() {
+                let filename = format!("key-{id}.json");
+
+                let path = output_dir.join(filename);
+                let file =
+                    std::fs::File::create(&path).expect("couldn't create file given output dir");
+                serde_json::to_writer_pretty(file, key_package).unwrap();
+            }
+
+            // public key package
+            let path = output_dir.join("publickey-package.json");
+            let file = std::fs::File::create(&path).expect("couldn't create file given output dir");
+            serde_json::to_writer_pretty(file, &pubkey_package).unwrap();
         }
 
         Commands::StartCommitteeNode {
@@ -280,7 +297,7 @@ async fn main() {
             let key = {
                 let full_path = current_dir.join(key_path);
                 let file = std::fs::File::open(full_path).expect("file not found");
-                let key: frost::keys::KeyPackage =
+                let key: frost::KeyPackage =
                     serde_json::from_reader(file).expect("error while reading file");
                 key
             };
@@ -288,7 +305,7 @@ async fn main() {
             let publickey_package = {
                 let full_path = current_dir.join(publickey_package_path);
                 let file = std::fs::File::open(full_path).expect("file not found");
-                let publickey_package: frost::keys::PublicKeyPackage =
+                let publickey_package: frost::PublicKeyPackage =
                     serde_json::from_reader(file).expect("error while reading file");
                 publickey_package
             };
