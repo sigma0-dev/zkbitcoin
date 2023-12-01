@@ -1,6 +1,7 @@
 use std::{env, path::PathBuf, str::FromStr};
 
 use clap::{Parser, Subcommand};
+use frost_secp256k1 as frost;
 use zkbitcoin::{alice_sign_tx::generate_and_broadcast_transaction, json_rpc_stuff::RpcCtx, plonk};
 
 #[derive(Parser)]
@@ -74,6 +75,38 @@ enum Commands {
         #[arg(short, long)]
         proof_path: String,
     },
+
+    GenerateCommitteeConfigurationsAsDealer {
+        #[arg(short, long)]
+        max_signers: usize,
+
+        #[arg(short, long)]
+        min_signers: usize,
+
+        #[arg(short, long)]
+        output_dir: String,
+    },
+
+    /// Starts an MPC node given a configuration
+    StartCommitteeNode {
+        /// The wallet name of the RPC full node.
+        #[arg(env = "RPC_WALLET")]
+        wallet: Option<String>,
+
+        /// The `http(s)://address:port`` of the RPC full node.
+        #[arg(env = "RPC_ADDRESS")]
+        address: Option<String>,
+
+        /// The `user:password`` of the RPC full node.
+        #[arg(env = "RPC_AUTH")]
+        auth: Option<String>,
+
+        #[arg(short, long)]
+        key_path: String,
+
+        #[arg(short, long)]
+        publickey_package_path: String,
+    },
 }
 
 #[tokio::main]
@@ -109,11 +142,12 @@ async fn main() {
             public_inputs_path,
             satoshi_amount,
         } => {
+            let current_dir = PathBuf::from(env::current_dir().unwrap());
             let ctx = RpcCtx::new(wallet.clone(), address.clone(), auth.clone());
 
             let (vk, vk_hash) = {
                 // open vk file
-                let full_path = PathBuf::from(env::current_dir().unwrap()).join(verifier_key_path);
+                let full_path = current_dir.join(verifier_key_path);
                 let file = std::fs::File::open(full_path).expect("file not found");
                 let vk: plonk::VerifierKey =
                     serde_json::from_reader(file).expect("error while reading file");
@@ -128,7 +162,7 @@ async fn main() {
             let mut public_inputs = vec![];
             if let Some(path) = public_inputs_path {
                 // open public_inputs file
-                let full_path = PathBuf::from(env::current_dir().unwrap()).join(path);
+                let full_path = current_dir.join(path);
                 let file = std::fs::File::open(&full_path)
                     .unwrap_or_else(|_| panic!("file not found at path: {:?}", full_path));
 
@@ -178,6 +212,7 @@ async fn main() {
             proof_path,
         } => {
             let current_dir = PathBuf::from(env::current_dir().unwrap());
+
             // get proof, vk, and inputs
             let proof: plonk::Proof = {
                 let full_path = current_dir.join(proof_path);
@@ -213,6 +248,51 @@ async fn main() {
             // send bob's request to the MPC committee.
             const MPC_ADDRESS: &str = "TODO";
             let mpc_address = mpc_address.as_deref().unwrap_or(MPC_ADDRESS);
+            todo!();
+        }
+
+        Commands::GenerateCommitteeConfigurationsAsDealer {
+            max_signers,
+            min_signers,
+            output_dir,
+        } => {
+            let output_dir = PathBuf::from(output_dir);
+
+            let committee_configurations = todo!();
+
+            // for (i, config) in committee_configurations.iter().enumerate() {
+            //     let path = output_dir.join(format!("committee_config_{}.json", i));
+            //     let file = std::fs::File::create(&path).unwrap();
+            //     serde_json::to_writer_pretty(file, config).unwrap();
+            // }
+        }
+
+        Commands::StartCommitteeNode {
+            wallet,
+            address,
+            auth,
+            key_path,
+            publickey_package_path,
+        } => {
+            let current_dir = PathBuf::from(env::current_dir().unwrap());
+            let ctx = RpcCtx::new(wallet.clone(), address.clone(), auth.clone());
+
+            let key = {
+                let full_path = current_dir.join(key_path);
+                let file = std::fs::File::open(full_path).expect("file not found");
+                let key: frost::keys::KeyPackage =
+                    serde_json::from_reader(file).expect("error while reading file");
+                key
+            };
+
+            let publickey_package = {
+                let full_path = current_dir.join(publickey_package_path);
+                let file = std::fs::File::open(full_path).expect("file not found");
+                let publickey_package: frost::keys::PublicKeyPackage =
+                    serde_json::from_reader(file).expect("error while reading file");
+                publickey_package
+            };
+
             todo!();
         }
     }
