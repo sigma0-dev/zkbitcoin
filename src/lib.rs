@@ -1,6 +1,7 @@
 //! zkBitcoin.
 
 pub mod constants;
+pub mod frost;
 pub mod json_rpc_stuff;
 pub mod plonk;
 
@@ -13,5 +14,3 @@ pub mod bob_request;
 
 /// 3. The zkBitcoin committee produce a collaborative schnorr signature to unlock the funds for Bob.
 pub mod mpc_sign_tx;
-
-mod frost;
