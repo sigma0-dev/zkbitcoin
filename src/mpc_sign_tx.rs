@@ -107,7 +107,7 @@ pub fn sign_transaction_schnorr(
     secp.sign_schnorr_with_aux_rand(&msg, &tweaked_keypair, &[0u8; 32])
 }
 
-async fn send_to_p2tr_pubkey(secp: &Secp256k1<All>, xonly_pubkey: XOnlyPublicKey, amount: u64) {
+async fn send_to_p2tr_pubkey(secp: &Secp256k1<All>, xonly_pubkey: XOnlyPublicKey, amount: u64) -> Txid {
     // create empty transaction that sends to a p2tr from our wallet
     let tx = Transaction {
         version: Version::TWO,
@@ -134,6 +134,7 @@ async fn send_to_p2tr_pubkey(secp: &Secp256k1<All>, xonly_pubkey: XOnlyPublicKey
     let txid = send_raw_transaction(TransactionOrHex::Hex(tx_hex))
         .await
         .unwrap();
+    txid
 }
 
 #[cfg(test)]
@@ -196,7 +197,7 @@ mod tests {
         //        let sig = sign_transaction_schnorr(&sk, &tx, &prevouts);
         //        println!("{sig:?}");
 
-        send_to_p2tr_pubkey(&secp, xonly_pubkey, amount).await;
+        let txid = send_to_p2tr_pubkey(&secp, xonly_pubkey, amount).await;
 
         println!("- txid: {txid}");
     }
