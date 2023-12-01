@@ -26,7 +26,7 @@ pub struct BobRequest {
     /// A proof.
     pub proof: plonk::Proof,
 
-    /// Any additional public inputs used in the proof (if any).
+    /// All public inputs used in the proof (if any).
     pub public_inputs: Vec<String>,
 }
 

@@ -1,4 +1,4 @@
-use std::{env, path::PathBuf};
+use std::{env, path::PathBuf, str::FromStr};
 
 use clap::{Parser, Subcommand};
 use zkbitcoin::{alice_sign_tx::generate_and_broadcast_transaction, json_rpc_stuff::RpcCtx, plonk};
@@ -22,7 +22,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Alice can use this to deploy a circuit
+    /// Alice can use this to deploy a circuit.
     DeployTransaction {
         /// The wallet name of the RPC full node.
         #[arg(env = "RPC_WALLET")]
@@ -48,6 +48,31 @@ enum Commands {
         /// The amount in satoshis to send to the smart contract.
         #[arg(short, long)]
         satoshi_amount: u64,
+    },
+
+    /// Bob can use this to unlock funds from a smart contract.
+    UnlockFundsRequest {
+        /// The wallet name of the RPC full node.
+        #[arg(env = "MPC_ADDRESS")]
+        mpc_address: Option<String>,
+
+        /// The transaction ID that deployed the smart contract.
+        #[arg(short, long)]
+        txid: String,
+
+        /// The path to the verifier key in JSON format (see `circuit_example/vk.json` for an example).
+        #[arg(short, long)]
+        verifier_key_path: String,
+
+        /// The path to the full proof public inputs
+        /// (see `circuit_example/proof_inputs.json` for an example).
+        #[arg(short, long)]
+        proof_inputs_path: Option<String>,
+
+        /// The path to the full proof.
+        /// (see `circuit_example/proof.json` for an example).
+        #[arg(short, long)]
+        proof_path: String,
     },
 }
 
@@ -78,10 +103,10 @@ async fn main() {
     match &cli.command {
         Commands::DeployTransaction {
             wallet,
-            verifier_key_path,
-            public_inputs_path,
             address,
             auth,
+            verifier_key_path,
+            public_inputs_path,
             satoshi_amount,
         } => {
             let ctx = RpcCtx::new(wallet.clone(), address.clone(), auth.clone());
@@ -143,6 +168,52 @@ async fn main() {
                 generate_and_broadcast_transaction(&ctx, &vk_hash, public_inputs, *satoshi_amount)
                     .await
                     .unwrap();
+        }
+
+        Commands::UnlockFundsRequest {
+            mpc_address,
+            txid,
+            verifier_key_path,
+            proof_inputs_path,
+            proof_path,
+        } => {
+            let current_dir = PathBuf::from(env::current_dir().unwrap());
+            // get proof, vk, and inputs
+            let proof: plonk::Proof = {
+                let full_path = current_dir.join(proof_path);
+                let file = std::fs::File::open(&full_path)
+                    .unwrap_or_else(|_| panic!("file not found at path: {:?}", full_path));
+                serde_json::from_reader(file).expect("error while reading file")
+            };
+            let vk: plonk::VerifierKey = {
+                let full_path = current_dir.join(verifier_key_path);
+                let file = std::fs::File::open(&full_path)
+                    .unwrap_or_else(|_| panic!("file not found at path: {:?}", full_path));
+                serde_json::from_reader(file).expect("error while reading file")
+            };
+            let public_inputs: Vec<String> = if let Some(path) = proof_inputs_path {
+                let full_path = current_dir.join(path);
+                let file = std::fs::File::open(&full_path)
+                    .unwrap_or_else(|_| panic!("file not found at path: {:?}", full_path));
+                let proof_inputs: plonk::ProofInputs =
+                    serde_json::from_reader(file).expect("error while reading file");
+                proof_inputs.0
+            } else {
+                vec![]
+            };
+
+            // create bob request
+            let bob_request = zkbitcoin::bob_request::BobRequest {
+                txid: bitcoin::Txid::from_str(txid).unwrap(),
+                vk,
+                proof,
+                public_inputs: public_inputs,
+            };
+
+            // send bob's request to the MPC committee.
+            const MPC_ADDRESS: &str = "TODO";
+            let mpc_address = mpc_address.as_deref().unwrap_or(MPC_ADDRESS);
+            todo!();
         }
     }
 }
