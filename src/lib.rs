@@ -1,5 +1,6 @@
 //! zkBitcoin.
 
+pub mod committee;
 pub mod constants;
 pub mod frost;
 pub mod json_rpc_stuff;
