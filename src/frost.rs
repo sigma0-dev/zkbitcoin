@@ -39,8 +39,8 @@ mod tests {
         println!("2: {}", pubkey2);
         println!("3: {}", pubkey3);
 
-        // TODO: why does this fail half of the time?
-        let pubkey = bitcoin::XOnlyPublicKey::from_slice(&serialized_pubkey[0..32]).unwrap();
+        // TODO: why does this fail half of the time? Not anymore!
+        let pubkey = bitcoin::XOnlyPublicKey::from_slice(&serialized_pubkey[1..]).unwrap();
 
         println!("1: {}", pubkey);
     }
