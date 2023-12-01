@@ -111,7 +111,7 @@ pub async fn fetch_smart_contract(
             ],
         )
         .await
-        .map_err(|_| "TODO: real error")?;
+        .map_err(|e| "gettransaction error")?;
 
         // TODO: get rid of unwrap in here
         let response: jsonrpc::Response = serde_json::from_str(&response).unwrap();

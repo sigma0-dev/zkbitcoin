@@ -23,6 +23,30 @@ pub struct RpcCtx {
 }
 
 impl RpcCtx {
+    pub fn new(wallet: Option<String>, address: Option<String>, auth: Option<String>) -> Self {
+        let ctx = Self {
+            wallet,
+            address,
+            auth,
+        };
+
+        println!("- using RPC node at address {}", ctx.address());
+
+        if ctx.auth().is_some() {
+            println!("- using given RPC credentials");
+        } else {
+            println!("- using no RPC credentials");
+        }
+
+        if let Some(wallet) = ctx.wallet() {
+            println!("- using wallet {wallet}");
+        } else {
+            println!("- using default wallet");
+        }
+
+        ctx
+    }
+
     pub fn wallet(&self) -> Option<&str> {
         self.wallet.as_deref()
     }
@@ -133,7 +157,7 @@ pub async fn fund_raw_transaction<'a>(
         &[serde_json::value::to_raw_value(&serde_json::Value::String(tx_hex)).unwrap()],
     )
     .await
-    .map_err(|_| "TODO: real error")?;
+    .map_err(|_| "fundrawtransaction error")?;
 
     // TODO: get rid of unwrap in here
     let response: jsonrpc::Response = serde_json::from_str(&response).unwrap();
@@ -161,7 +185,7 @@ pub async fn sign_transaction<'a>(
         &[serde_json::value::to_raw_value(&serde_json::Value::String(tx_hex)).unwrap()],
     )
     .await
-    .map_err(|_| "TODO: real error")?;
+    .map_err(|_| "signrawtransactionwithwallet error")?;
 
     // TODO: get rid of unwrap in here
     let response: jsonrpc::Response = serde_json::from_str(&response).unwrap();
@@ -189,7 +213,7 @@ pub async fn send_raw_transaction<'a>(
         &[serde_json::value::to_raw_value(&serde_json::Value::String(tx_hex)).unwrap()],
     )
     .await
-    .map_err(|_| "TODO: real error")?;
+    .map_err(|_| "sendrawtransaction error")?;
 
     // TODO: get rid of unwrap in here
     let response: jsonrpc::Response = serde_json::from_str(&response).unwrap();
