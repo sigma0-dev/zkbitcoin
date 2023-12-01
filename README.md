@@ -104,3 +104,7 @@ snarkjs plonk setup circuit.r1cs phase2_start.ptau circuit_final.zkey
 # export vk
 snarkjs zkey export verificationkey circuit_final.zkey vk.json
 ```
+
+## Use FROST
+
+https://frost.zfnd.org
