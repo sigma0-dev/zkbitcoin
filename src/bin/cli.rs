@@ -220,6 +220,7 @@ async fn main() {
             };
 
             // send bob's request to the MPC committee.
+            // TODO: we need a coordinator.
             const MPC_ADDRESS: &str = "TODO";
             let mpc_address = mpc_address.as_deref().unwrap_or(MPC_ADDRESS);
             todo!();
@@ -276,11 +277,11 @@ async fn main() {
                 publickey_package
             };
 
-            zkbitcoin::committee::node::run_server(
-                "http://127.0.0.1:6666",
-                key_package,
-                pubkey_package,
-            );
+            // zkbitcoin::committee::node::run_server(
+            //     "http://127.0.0.1:6666",
+            //     key_package,
+            //     pubkey_package,
+            // );
         }
     }
 }

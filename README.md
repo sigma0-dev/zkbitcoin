@@ -107,10 +107,34 @@ snarkjs zkey export verificationkey circuit_final.zkey vk.json
 
 ## CLI
 
+### Deploy smart contract command
+
 Alice can deploy a smart contract with verifier key `circuit_example/vk.json` and with value `1000` with the following command:
 
-```
+```shell
 RPC_WALLET="mywallet" RPC_ADDRESS="http://146.190.33.39:18331" RPC_AUTH="root:hellohello" cargo run --bin cli -- deploy-transaction --verifier-key-path circuit_example/vk.json --public-inputs-path circuit_example/public_inputs.json --satoshi-amount 1000
 ```
 
 note that `circuit_example/public_inputs.json` is also passed to fix inputs `a` and `b` in the circuit. At the moment you can also not fix any inputs, or fix the `a` input, or fix `a, b, c`, but you can't just fix `b` or `c` or `b, c` (basically we can fix a prefix since we don't pass indexes for the public inputs).
+
+### Unlock funds command
+
+```
+TODO
+```
+
+### Generate committee with trusted dealer
+
+```shell
+cargo run --bin cli -- generate-committee --num 3 --threshold 2 --output-dir tests/
+```
+
+### Start a committee node 
+
+```shell
+cargo run  -- start-committee-node --key-path tests/key-0.json --publickey-package-path tests/publickey-package.json
+```
+
+### Start an orchestrator/coordinator??
+
+TODO: do we need this 

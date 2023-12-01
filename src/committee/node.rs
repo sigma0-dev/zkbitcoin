@@ -5,16 +5,22 @@ use jsonrpc_derive::rpc;
 pub trait Rpc {
     /// Unlock funds for a smart contract
     #[rpc(name = "unlock_funds")]
-    fn unlock_funds(&self, a: BobRequest) -> Result<u64>;
+    fn unlock_funds(&self, request: BobRequest) -> Result<u64>;
 }
 
 pub struct RpcImpl {
+    pub ctx: RpcCtx,
     pub key_package: frost::KeyPackage,
     pub pubkey_package: frost::PublicKeyPackage,
 }
 
 impl Rpc for RpcImpl {
-    fn unlock_funds(&self, a: BobRequest) -> Result<u64> {
+    fn unlock_funds(&self, request: BobRequest) -> Result<u64> {
+        // validate the request
+        // validate_request(&self.ctx, request, None)
+        //     .await
+        //     .map_err(|_| "Invalid request")?;
+
         Ok(5)
     }
 }
@@ -26,18 +32,21 @@ impl Rpc for RpcImpl {
 use jsonrpc_http_server::ServerBuilder;
 
 use crate::{
-    bob_request::{self, BobRequest},
+    bob_request::{validate_request, BobRequest},
     frost,
+    json_rpc_stuff::RpcCtx,
 };
 
 pub fn run_server(
     address: &str,
+    ctx: RpcCtx,
     key_package: frost::KeyPackage,
     pubkey_package: frost::PublicKeyPackage,
 ) {
     let rpc_impl = RpcImpl {
-        key_package: key_package,
-        pubkey_package: pubkey_package,
+        ctx,
+        key_package,
+        pubkey_package,
     };
 
     let mut io = jsonrpc_core::IoHandler::new();
