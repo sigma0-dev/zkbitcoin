@@ -8,9 +8,10 @@ use bitcoin::{
     Address, Amount, OutPoint, PublicKey, ScriptBuf, Sequence, TapSighashType, TapTweakHash,
     Transaction, TxIn, TxOut, Txid, Witness,
 };
-use secp256k1::{hashes::Hash, XOnlyPublicKey};
+use secp256k1::{All, hashes::Hash, Secp256k1, XOnlyPublicKey};
 
 use crate::constants::ZKBITCOIN_PUBKEY;
+use crate::json_rpc_stuff::{fund_raw_transaction, send_raw_transaction, sign_transaction, TransactionOrHex};
 
 pub fn create_transaction(
     utxo: (Txid, u32),
@@ -106,12 +107,42 @@ pub fn sign_transaction_schnorr(
     secp.sign_schnorr_with_aux_rand(&msg, &tweaked_keypair, &[0u8; 32])
 }
 
+async fn send_to_p2tr_pubkey(secp: &Secp256k1<All>, xonly_pubkey: XOnlyPublicKey, amount: u64) {
+    // create empty transaction that sends to a p2tr from our wallet
+    let tx = Transaction {
+        version: Version::TWO,
+        lock_time: LockTime::ZERO, // no lock time
+        input: vec![],
+        output: vec![TxOut {
+            value: Amount::from_sat(amount),
+            script_pubkey: ScriptBuf::new_p2tr(secp, xonly_pubkey, None),
+        }],
+    };
+
+    // fund that transaction with our wallet
+    let (tx_hex, _) =
+        fund_raw_transaction(TransactionOrHex::Transaction(&tx), Some("mywallet"))
+            .await
+            .unwrap();
+
+    // sign that transaction with our wallet
+    let (tx_hex, _) = sign_transaction(TransactionOrHex::Hex(tx_hex), Some("mywallet"))
+        .await
+        .unwrap();
+
+    // broadcast it
+    let txid = send_raw_transaction(TransactionOrHex::Hex(tx_hex))
+        .await
+        .unwrap();
+}
+
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
 
+    use std::str::FromStr;
     use bitcoin::{taproot, Network, PrivateKey};
     use rand::prelude::*;
+
     use rand_chacha::ChaCha20Rng;
 
     use crate::{
@@ -122,7 +153,6 @@ mod tests {
     };
 
     use super::*;
-
     /*
     - privkey: b2f7f581d6de3c06a822fd6e7e8265fbc00f8401696a5bdc34f5a6d2ff3f922f
     - status_code: 200
@@ -134,6 +164,7 @@ mod tests {
     - on an explorer: https://blockstream.info/testnet/tx/02fcc5b458ff032d4c82b12ce8c1c4c5b88c91bd7953bb2cdbb212f3219e91c3
     - txid: 02fcc5b458ff032d4c82b12ce8c1c4c5b88c91bd7953bb2cdbb212f3219e91c3
      */
+
     #[tokio::test]
     #[ignore = "I used this to send a p2tr transaction on the network to a known private key"]
     async fn test_p2tr() {
@@ -146,7 +177,7 @@ mod tests {
         //let pubkey = secp256k1::PublicKey::from_secret_key(&secp, &sk);
         let private_key = PrivateKey::new(sk, Network::Testnet);
         let pubkey = PublicKey::from_private_key(&secp, &private_key);
-        let untweaked = UntweakedPublicKey::from(pubkey);
+        let xonly_pubkey = UntweakedPublicKey::from(pubkey);
         //        let tweaked = untweaked.add_tweak(&secp, &secp256k1::Scalar::ONE);
 
         // make sure we can recover the private key
@@ -159,36 +190,13 @@ mod tests {
             assert_eq!(sk, sk2);
         }
 
+        let amount = 1000;
+
         //        let (tx, prevouts) = create_dummy_tx();
         //        let sig = sign_transaction_schnorr(&sk, &tx, &prevouts);
         //        println!("{sig:?}");
 
-        // create empty transaction that sends to a p2tr from our wallet
-        let tx = Transaction {
-            version: Version::TWO,
-            lock_time: LockTime::ZERO, // no lock time
-            input: vec![],
-            output: vec![TxOut {
-                value: Amount::from_sat(1000),
-                script_pubkey: ScriptBuf::new_p2tr(&secp, untweaked, None),
-            }],
-        };
-
-        // fund that transaction with our wallet
-        let (tx_hex, _) =
-            fund_raw_transaction(TransactionOrHex::Transaction(&tx), Some("mywallet"))
-                .await
-                .unwrap();
-
-        // sign that transaction with our wallet
-        let (tx_hex, _) = sign_transaction(TransactionOrHex::Hex(tx_hex), Some("mywallet"))
-            .await
-            .unwrap();
-
-        // broadcast it
-        let txid = send_raw_transaction(TransactionOrHex::Hex(tx_hex))
-            .await
-            .unwrap();
+        send_to_p2tr_pubkey(&secp, xonly_pubkey, amount).await;
 
         println!("- txid: {txid}");
     }
