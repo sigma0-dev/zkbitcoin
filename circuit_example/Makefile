@@ -23,5 +23,5 @@ plonk:
 	snarkjs zkey export verificationkey circuit_final.zkey vk.json
 
 	# prove
-	node output/circuit_js/generate_witness.js output/circuit_js/circuit.wasm public_input.json output/witness.wtns
+	node output/circuit_js/generate_witness.js output/circuit_js/circuit.wasm public_inputs.json output/witness.wtns
 	snarkjs plonk prove circuit_final.zkey output/witness.wtns proof.json proof_inputs.json

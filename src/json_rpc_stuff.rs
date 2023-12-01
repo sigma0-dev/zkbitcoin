@@ -4,11 +4,51 @@
 
 use base64::{engine::general_purpose, Engine};
 use bitcoin::{Transaction, Txid};
+use itertools::Itertools;
 use reqwest::{
     header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE},
     Client,
 };
 use std::time::Duration;
+
+//
+// Context
+//
+
+#[derive(Default)]
+pub struct RpcCtx {
+    pub wallet: Option<String>,
+    pub address: Option<String>,
+    pub auth: Option<String>,
+}
+
+impl RpcCtx {
+    pub fn wallet(&self) -> Option<&str> {
+        self.wallet.as_deref()
+    }
+
+    pub fn address(&self) -> &str {
+        self.address.as_deref().unwrap_or("http://127.0.0.1:18331")
+    }
+
+    pub fn auth(&self) -> Option<&str> {
+        self.auth.as_deref()
+        /*.map(|s| {
+            s.split('.')
+                .map(str::to_string)
+                .collect_tuple()
+                .expect("auth was incorrectly passed (expected `user:pw`)")
+        })*/
+    }
+
+    pub fn for_testing() -> Self {
+        Self {
+            wallet: Some("mywallet".to_string()),
+            address: Some(JSON_RPC_ENDPOINT.to_string()),
+            auth: Some(JSON_RPC_AUTH.to_string()),
+        }
+    }
+}
 
 //
 // Main JSON RPC request function
@@ -24,7 +64,7 @@ const JSON_RPC_AUTH: &str = "root:hellohello";
 /// Implements a JSON RPC request to the bitcoind node.
 /// Following the [JSON RPC 1.0 spec](https://www.jsonrpc.org/specification_v1).
 pub async fn json_rpc_request<'a>(
-    wallet: Option<&str>,
+    ctx: &RpcCtx,
     method: &'static str,
     params: &'a [Box<serde_json::value::RawValue>],
 ) -> Result<String, reqwest::Error> {
@@ -37,20 +77,27 @@ pub async fn json_rpc_request<'a>(
         method,
         params,
     };
-    let body = serde_json::to_string(&request).unwrap();
-    let user_n_pw = general_purpose::STANDARD.encode(JSON_RPC_AUTH);
+
     let mut headers = HeaderMap::new();
-    headers.insert(
-        AUTHORIZATION,
-        HeaderValue::from_str(&format!("Basic {}", user_n_pw)).unwrap(),
-    );
+    if let Some(auth) = ctx.auth() {
+        let user_n_pw = general_purpose::STANDARD.encode(auth);
+        headers.insert(
+            AUTHORIZATION,
+            HeaderValue::from_str(&format!("Basic {}", user_n_pw)).unwrap(),
+        );
+    }
+
+    let body = serde_json::to_string(&request).unwrap();
+
     let client = Client::builder()
         .default_headers(headers)
         .timeout(Duration::from_secs(10))
         .build()?;
-    let url = match wallet {
-        Some(wallet) => format!("{}/wallet/{}", JSON_RPC_ENDPOINT, wallet),
-        None => JSON_RPC_ENDPOINT.to_string(),
+
+    let endpoint = ctx.address();
+    let url = match &ctx.wallet {
+        Some(wallet) => format!("{}/wallet/{}", endpoint, wallet),
+        None => endpoint.to_string(),
     };
     let response = client
         .post(url)
@@ -72,8 +119,8 @@ pub enum TransactionOrHex<'a> {
 }
 
 pub async fn fund_raw_transaction<'a>(
+    ctx: &RpcCtx,
     tx: TransactionOrHex<'a>,
-    wallet: Option<&str>,
 ) -> Result<(String, Transaction), &'static str> {
     let tx_hex = match tx {
         TransactionOrHex::Hex(hex) => hex,
@@ -81,7 +128,7 @@ pub async fn fund_raw_transaction<'a>(
     };
 
     let response = json_rpc_request(
-        wallet,
+        ctx,
         "fundrawtransaction",
         &[serde_json::value::to_raw_value(&serde_json::Value::String(tx_hex)).unwrap()],
     )
@@ -100,8 +147,8 @@ pub async fn fund_raw_transaction<'a>(
 }
 
 pub async fn sign_transaction<'a>(
+    ctx: &RpcCtx,
     tx: TransactionOrHex<'a>,
-    wallet: Option<&str>,
 ) -> Result<(String, Transaction), &'static str> {
     let tx_hex = match tx {
         TransactionOrHex::Hex(hex) => hex,
@@ -109,7 +156,7 @@ pub async fn sign_transaction<'a>(
     };
 
     let response = json_rpc_request(
-        wallet,
+        ctx,
         "signrawtransactionwithwallet",
         &[serde_json::value::to_raw_value(&serde_json::Value::String(tx_hex)).unwrap()],
     )
@@ -127,14 +174,17 @@ pub async fn sign_transaction<'a>(
     Ok((actual_hex, tx))
 }
 
-pub async fn send_raw_transaction<'a>(tx: TransactionOrHex<'a>) -> Result<Txid, &'static str> {
+pub async fn send_raw_transaction<'a>(
+    ctx: &RpcCtx,
+    tx: TransactionOrHex<'a>,
+) -> Result<Txid, &'static str> {
     let tx_hex = match tx {
         TransactionOrHex::Hex(hex) => hex,
         TransactionOrHex::Transaction(tx) => bitcoin::consensus::encode::serialize_hex(tx),
     };
 
     let response = json_rpc_request(
-        None,
+        ctx,
         "sendrawtransaction",
         &[serde_json::value::to_raw_value(&serde_json::Value::String(tx_hex)).unwrap()],
     )

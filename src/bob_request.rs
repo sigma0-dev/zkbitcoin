@@ -8,11 +8,11 @@ use bitcoin::{Amount, PublicKey, Transaction};
 use serde::{Deserialize, Serialize};
 use tempdir::TempDir;
 
-use crate::plonk;
 use crate::{
     constants::{MINIMUM_CONFIRMATIONS, ZKBITCOIN_PUBKEY},
     json_rpc_stuff::json_rpc_request,
 };
+use crate::{json_rpc_stuff::RpcCtx, plonk};
 
 /// A request from Bob to unlock funds from a smart contract should look like this.
 #[derive(Serialize, Deserialize)]
@@ -94,13 +94,16 @@ pub fn parse_transaction(raw_tx: &Transaction) -> Result<SmartContract, &'static
 }
 
 /// Fetch the smart contract on-chain from the txid.
-pub async fn fetch_smart_contract(txid: bitcoin::Txid) -> Result<SmartContract, &'static str> {
+pub async fn fetch_smart_contract(
+    ctx: &RpcCtx,
+    txid: bitcoin::Txid,
+) -> Result<SmartContract, &'static str> {
     // fetch transaction + metadata based on txid
     let (transaction, confirmations) = {
         println!("- fetching txid {txid}", txid = txid);
 
         let response = json_rpc_request(
-            None,
+            ctx,
             "gettransaction",
             &[
                 serde_json::value::to_raw_value(&serde_json::Value::String(txid.to_string()))
@@ -133,6 +136,7 @@ pub async fn fetch_smart_contract(txid: bitcoin::Txid) -> Result<SmartContract, 
 
 /// Validates a request received from Bob.
 pub async fn validate_request(
+    ctx: &RpcCtx,
     request: BobRequest,
     smart_contract: Option<SmartContract>,
 ) -> Result<(), &'static str> {
@@ -140,7 +144,7 @@ pub async fn validate_request(
     let smart_contract = if let Some(x) = smart_contract {
         x
     } else {
-        fetch_smart_contract(request.txid).await?
+        fetch_smart_contract(ctx, request.txid).await?
     };
 
     // ensure that the vk makes sense with public input that are fixed
@@ -267,7 +271,9 @@ mod tests {
         };
 
         // try to validate the request
-        validate_request(bob_request, Some(smart_contract))
+        let ctx = RpcCtx::for_testing();
+
+        validate_request(&ctx, bob_request, Some(smart_contract))
             .await
             .unwrap();
     }

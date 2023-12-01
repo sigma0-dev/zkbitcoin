@@ -7,14 +7,14 @@ use bitcoin::{
 
 use crate::constants::ZKBITCOIN_PUBKEY;
 use crate::json_rpc_stuff::{
-    fund_raw_transaction, send_raw_transaction, sign_transaction, TransactionOrHex,
+    fund_raw_transaction, send_raw_transaction, sign_transaction, RpcCtx, TransactionOrHex,
 };
 
 /// Generates and broadcasts a transaction to the network.
 /// Specifically, this sends a transaction to 0xzkBitcoin, for some given amount in satoshis,
 /// and authenticates the verifier key `vk` that can unlock the founds.
 pub async fn generate_and_broadcast_transaction(
-    wallet: Option<String>,
+    ctx: &RpcCtx,
     vk_hash: &[u8; 32],
     public_inputs: Vec<String>,
     satoshi_amount: u64,
@@ -82,21 +82,18 @@ pub async fn generate_and_broadcast_transaction(
     // https://developer.bitcoin.org/reference/rpc/fundrawtransaction.html
     //
     let (raw_tx_with_inputs_hex, _raw_tx_with_inputs) =
-        fund_raw_transaction(TransactionOrHex::Hex(tx_hex), wallet.as_deref()).await?;
+        fund_raw_transaction(ctx, TransactionOrHex::Hex(tx_hex)).await?;
 
     // 3. sign transaction
     // https://developer.bitcoin.org/reference/rpc/signrawtransactionwithwallet.html
     //
-    let (signed_tx_hex, _signed_tx) = sign_transaction(
-        TransactionOrHex::Hex(raw_tx_with_inputs_hex),
-        wallet.as_deref(),
-    )
-    .await?;
+    let (signed_tx_hex, _signed_tx) =
+        sign_transaction(ctx, TransactionOrHex::Hex(raw_tx_with_inputs_hex)).await?;
 
     // 4. broadcast transaction
     // https://developer.bitcoin.org/reference/rpc/sendrawtransaction.html
     //
-    let txid = send_raw_transaction(TransactionOrHex::Hex(signed_tx_hex)).await?;
+    let txid = send_raw_transaction(ctx, TransactionOrHex::Hex(signed_tx_hex)).await?;
 
     //
     Ok(txid)
@@ -116,8 +113,8 @@ mod tests {
         // you can run the test with `RUST_LOG=trace`
         env_logger::init();
 
-        let wallet = Some("mywallet".to_string());
-        let response = json_rpc_request(wallet.as_deref(), "getblockchaininfo", &[])
+        let ctx = RpcCtx::for_testing();
+        let response = json_rpc_request(&ctx, "getblockchaininfo", &[])
             .await
             .unwrap();
 
@@ -159,9 +156,11 @@ mod tests {
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0,
         ];
-        let wallet = Some("mywallet".to_string());
         let satoshi_amount = 1000;
-        let response = generate_and_broadcast_transaction(wallet, &vk, vec![], satoshi_amount)
+
+        let ctx = RpcCtx::for_testing();
+
+        let response = generate_and_broadcast_transaction(&ctx, &vk, vec![], satoshi_amount)
             .await
             .unwrap();
 
