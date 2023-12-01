@@ -21,7 +21,7 @@ mod tests {
         )
         .unwrap();
 
-        (private_key, pubkey_package.group_public().to_owned())
+        (private_key, pubkey_package.verifying_key().to_owned())
     }
 
     #[test]
