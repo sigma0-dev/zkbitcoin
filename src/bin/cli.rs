@@ -290,7 +290,7 @@ async fn main() {
         } => {
             let ctx = RpcCtx::new(wallet.clone(), address.clone(), auth.clone());
 
-            let key = {
+            let key_package = {
                 let full_path = PathBuf::from(key_path);
                 let file = std::fs::File::open(full_path).expect("file not found");
                 let key: frost::KeyPackage =
@@ -298,7 +298,7 @@ async fn main() {
                 key
             };
 
-            let publickey_package = {
+            let pubkey_package = {
                 let full_path = PathBuf::from(publickey_package_path);
                 let file = std::fs::File::open(full_path).expect("file not found");
                 let publickey_package: frost::PublicKeyPackage =
@@ -306,7 +306,11 @@ async fn main() {
                 publickey_package
             };
 
-            todo!();
+            zkbitcoin::committee::node::run_server(
+                "http://127.0.0.1:6666",
+                key_package,
+                pubkey_package,
+            );
         }
     }
 }
