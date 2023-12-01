@@ -12,6 +12,9 @@ use std::time::Duration;
 
 use crate::constants::BITCOIN_JSON_RPC_VERSION;
 
+/// Timeout (in seconds) for json rpc requests.
+const JSON_RPC_TIMEOUT: u64 = 2;
+
 //
 // Context
 //
@@ -120,16 +123,11 @@ pub async fn json_rpc_request<'a>(
         );
     }
 
-    {
-        let body = serde_json::to_string_pretty(&request).unwrap();
-        println!("- body: {body}");
-    }
-
     let body = serde_json::to_string(&request).unwrap();
 
     let client = Client::builder()
         .default_headers(headers)
-        .timeout(Duration::from_secs(10))
+        .timeout(Duration::from_secs(JSON_RPC_TIMEOUT))
         .build()?;
 
     let endpoint = ctx.address();
@@ -137,6 +135,12 @@ pub async fn json_rpc_request<'a>(
         Some(wallet) => format!("{}/wallet/{}", endpoint, wallet),
         None => endpoint.to_string(),
     };
+
+    {
+        let body = serde_json::to_string_pretty(&request).unwrap();
+        println!("- sending request to {url} with body: {body}");
+    }
+
     let response = client
         .post(url)
         .header(CONTENT_TYPE, "application/json")

@@ -17,8 +17,19 @@ pub struct RpcImpl {
 
 impl Rpc for RpcImpl {
     fn unlock_funds(&self, request: BobRequest) -> Result<BobResponse> {
+        println!("receied a request to unlock funds: {:?}", request);
+
         // validate the request
-        futures::executor::block_on(validate_request(&self.ctx, request, None)).unwrap();
+        println!("validating the request...");
+        if let Some(err) =
+            futures::executor::block_on(validate_request(&self.ctx, request, None)).err()
+        {
+            println!("couldn't validate");
+            return Err(jsonrpc_core::Error::invalid_params(
+                "couldn't validate the request !!",
+            ));
+        }
+        println!("validated!");
 
         Ok(BobResponse {
             txid: Txid::all_zeros(),

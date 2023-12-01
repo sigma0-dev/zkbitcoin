@@ -19,7 +19,7 @@ use crate::{json_rpc_stuff::RpcCtx, plonk};
 //
 
 /// A request from Bob to unlock funds from a smart contract should look like this.
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct BobRequest {
     /// The transaction ID that deployed the smart contract.
     pub txid: bitcoin::Txid,
