@@ -29,11 +29,11 @@ enum Commands {
         #[arg(env = "RPC_AUTH")]
         auth: Option<String>,
 
-        /// The path to the verifier key in JSON format (see `circuit_example/vk.json` for an example).
+        /// The path to the verifier key in JSON format (see `examples/circuit/vk.json` for an example).
         #[arg(short, long)]
         verifier_key_path: String,
 
-        /// The path to the public input (see `circuit_example/public_inputs.json` for an example).
+        /// The path to the public input (see `examples/circuit/public_inputs.json` for an example).
         /// We assume that the JSON object is correctly ordered (in the order that the Circom circuit expects).
         #[arg(short, long)]
         public_inputs_path: Option<String>,
@@ -53,17 +53,17 @@ enum Commands {
         #[arg(short, long)]
         txid: String,
 
-        /// The path to the verifier key in JSON format (see `circuit_example/vk.json` for an example).
+        /// The path to the verifier key in JSON format (see `examples/circuit/vk.json` for an example).
         #[arg(short, long)]
         verifier_key_path: String,
 
         /// The path to the full proof public inputs
-        /// (see `circuit_example/proof_inputs.json` for an example).
+        /// (see `examples/circuit/proof_inputs.json` for an example).
         #[arg(short, long)]
         proof_inputs_path: Option<String>,
 
         /// The path to the full proof.
-        /// (see `circuit_example/proof.json` for an example).
+        /// (see `examples/circuit/proof.json` for an example).
         #[arg(short, long)]
         proof_path: String,
     },

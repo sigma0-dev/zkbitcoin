@@ -225,7 +225,7 @@ mod tests {
     #[tokio::test]
     async fn test_validate_bob_request() {
         // read circuit example files
-        let circuit_files = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("circuit_example");
+        let circuit_files = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/circuit");
 
         // get proof, vk, and inputs
         let proof: plonk::Proof = {
