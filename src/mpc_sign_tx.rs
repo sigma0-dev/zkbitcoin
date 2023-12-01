@@ -158,6 +158,7 @@ mod tests {
             fund_raw_transaction, send_raw_transaction, sign_transaction, TransactionOrHex,
         },
     };
+    use crate::frost::{gen_frost_keys, to_xonly_pubkey};
 
     use super::*;
     /*
@@ -196,6 +197,33 @@ mod tests {
             .unwrap();
             assert_eq!(sk, sk2);
         }
+
+        let amount = 1000;
+
+        //        let (tx, prevouts) = create_dummy_tx();
+        //        let sig = sign_transaction_schnorr(&sk, &tx, &prevouts);
+        //        println!("{sig:?}");
+        let ctx = RpcCtx::for_testing();
+        let txid = send_to_p2tr_pubkey(&ctx, &secp, xonly_pubkey, amount).await;
+
+        println!("- txid: {txid}");
+    }
+
+    #[tokio::test]
+    #[ignore = "I used this to send a p2tr transaction on the network to a known private key"]
+    async fn test_send_and_spend_with_frost() {
+        // let's create a keypair and expose the privkey and pubkey
+        let secp = secp256k1::Secp256k1::default();
+
+        let max_signers = 5;
+        let min_signers = 3;
+
+        let (key_packages, pubkey_package) = gen_frost_keys(max_signers, min_signers).unwrap();
+
+        let pubkey = to_xonly_pubkey(pubkey_package.verifying_key());
+
+        let xonly_pubkey = UntweakedPublicKey::from(pubkey);
+        //        let tweaked = untweaked.add_tweak(&secp, &secp256k1::Scalar::ONE);
 
         let amount = 1000;
 

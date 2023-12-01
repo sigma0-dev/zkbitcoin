@@ -1,7 +1,8 @@
-use frost::keys::PublicKeyPackage;
 use frost_secp256k1 as frost;
 use rand::{thread_rng, RngCore};
 use std::collections::{BTreeMap, HashMap};
+use frost_secp256k1::VerifyingKey;
+use secp256k1::XOnlyPublicKey;
 
 //
 // copy/paste from their example
@@ -101,7 +102,7 @@ fn example() -> Result<(), frost::Error> {
 // Functions to test our flow
 //
 
-pub fn dkg() -> Result<
+pub fn gen_frost_keys(max_signers: u16, min_signers: u16) -> Result<
     (
         HashMap<frost::Identifier, frost::keys::KeyPackage>,
         frost::keys::PublicKeyPackage,
@@ -109,9 +110,6 @@ pub fn dkg() -> Result<
     frost::Error,
 > {
     let mut rng = thread_rng();
-
-    let max_signers = 5;
-    let min_signers = 3;
 
     ////////////////////////////////////////////////////////////////////////////
     // Key generation, Round 1
@@ -234,6 +232,11 @@ pub fn dkg() -> Result<
     ))
 }
 
+pub fn to_xonly_pubkey(verifying_key: &VerifyingKey) -> XOnlyPublicKey {
+    let serialized_pubkey = verifying_key.serialize();
+    XOnlyPublicKey::from_slice(&serialized_pubkey[1..]).unwrap()
+}
+
 fn sign(
     key_packages: HashMap<frost::Identifier, frost::keys::KeyPackage>,
     pubkey_package: frost::keys::PublicKeyPackage,
@@ -310,6 +313,8 @@ fn sign(
 
 #[cfg(test)]
 mod tests {
+    use frost_secp256k1::VerifyingKey;
+    use secp256k1::XOnlyPublicKey;
     use super::*;
 
     pub fn get_private_and_public() -> (frost::SigningKey, frost::VerifyingKey) {
@@ -339,7 +344,10 @@ mod tests {
         let (private, pubkey) = get_private_and_public();
 
         let serialized_private = private.serialize();
+
+        let xonly_pubkey = to_xonly_pubkey(&pubkey);
         let serialized_pubkey = pubkey.serialize();
+
         println!("{}", hex::encode(&serialized_pubkey));
 
         let privkey = secp256k1::SecretKey::from_slice(&serialized_private).unwrap();
@@ -349,15 +357,13 @@ mod tests {
         println!("2: {}", pubkey2);
         println!("3: {}", pubkey3);
 
-        // TODO: why does this fail half of the time? Not anymore!
-        let pubkey = bitcoin::XOnlyPublicKey::from_slice(&serialized_pubkey[1..]).unwrap();
-
-        println!("1: {}", pubkey);
+        println!("1: {}", xonly_pubkey);
     }
 
     #[test]
     fn test_flow() {
-        let (key_packages, pubkey_package) = dkg().unwrap();
+        let (key_packages, pubkey_package) = gen_frost_keys(5, 3).unwrap();
+
         sign(key_packages, pubkey_package).unwrap();
     }
 }
