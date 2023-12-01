@@ -14,6 +14,10 @@ use crate::{
 };
 use crate::{json_rpc_stuff::RpcCtx, plonk};
 
+//
+// Bob's side: form a request and send it to an endpoint
+//
+
 /// A request from Bob to unlock funds from a smart contract should look like this.
 #[derive(Serialize, Deserialize)]
 pub struct BobRequest {
@@ -29,6 +33,44 @@ pub struct BobRequest {
     /// All public inputs used in the proof (if any).
     pub public_inputs: Vec<String>,
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BobResponse {
+    pub txid: bitcoin::Txid,
+}
+
+pub async fn send_bob_request(
+    address: &str,
+    request: BobRequest,
+) -> Result<BobResponse, &'static str> {
+    let ctx = RpcCtx {
+        version: Some("2.0"),
+        wallet: None,
+        address: Some(address.to_string()),
+        auth: None,
+    };
+
+    let resp = json_rpc_request(
+        &ctx,
+        "unlock_funds",
+        &[serde_json::value::to_raw_value(&request).unwrap()],
+    )
+    .await
+    .map_err(|e| {
+        println!("error: {e}");
+        "unlock_funds error"
+    })?;
+
+    // TODO: get rid of unwrap in here
+    let response: jsonrpc::Response = serde_json::from_str(&resp).unwrap();
+    let bob_response: BobResponse = response.result().unwrap();
+
+    Ok(bob_response)
+}
+
+//
+// Everything at this point is to parse and validate Bob's request.
+//
 
 /// All the metadata that describes a smart contract.
 pub struct SmartContract {
@@ -111,7 +153,7 @@ pub async fn fetch_smart_contract(
             ],
         )
         .await
-        .map_err(|e| "gettransaction error")?;
+        .map_err(|_| "gettransaction error")?;
 
         // TODO: get rid of unwrap in here
         let response: jsonrpc::Response = serde_json::from_str(&response).unwrap();

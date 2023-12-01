@@ -120,7 +120,7 @@ note that `examples/circuit/public_inputs.json` is also passed to fix inputs `a`
 ### Unlock funds command
 
 ```
-TODO
+cargo run --bin cli -- unlock-funds-request --txid "0000000000000000000000000000000000000000000000000000000000000000" --verifier-key-path examples/circuit/vk.json --public-inputs-path examples/circuit/proof_inputs.json --proof-path examples/circuit/proof.json
 ```
 
 ### Generate committee with trusted dealer
@@ -134,6 +134,14 @@ cargo run --bin cli -- generate-committee --num 3 --threshold 2 --output-dir tes
 ```shell
 cargo run  -- start-committee-node --key-path tests/key-0.json --publickey-package-path tests/publickey-package.json
 ```
+
+then you can query it like so:
+
+```shell
+curl -X POST http://127.0.0.1:6666 -H 'Content-Type: application/json' -d '{"jsonrpc": "2.0", "id": "thing", "method":"unlock_funds","params": [{"txid": "yo", "vk": "yo", "proof":"yo", "public_inputs": []}]}'
+```
+
+or with the previous unlock funds CLI command.
 
 ### Start an orchestrator/coordinator??
 

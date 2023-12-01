@@ -1,11 +1,12 @@
-use jsonrpc_core::Result;
+use bitcoin::Txid;
+use jsonrpc_core::{futures, futures_util::future, BoxFuture, Result};
 use jsonrpc_derive::rpc;
 
 #[rpc]
 pub trait Rpc {
     /// Unlock funds for a smart contract
     #[rpc(name = "unlock_funds")]
-    fn unlock_funds(&self, request: BobRequest) -> Result<u64>;
+    fn unlock_funds(&self, request: BobRequest) -> Result<BobResponse>;
 }
 
 pub struct RpcImpl {
@@ -15,13 +16,13 @@ pub struct RpcImpl {
 }
 
 impl Rpc for RpcImpl {
-    fn unlock_funds(&self, request: BobRequest) -> Result<u64> {
+    fn unlock_funds(&self, request: BobRequest) -> Result<BobResponse> {
         // validate the request
-        // validate_request(&self.ctx, request, None)
-        //     .await
-        //     .map_err(|_| "Invalid request")?;
+        futures::executor::block_on(validate_request(&self.ctx, request, None)).unwrap();
 
-        Ok(5)
+        Ok(BobResponse {
+            txid: Txid::all_zeros(),
+        })
     }
 }
 
@@ -30,19 +31,22 @@ impl Rpc for RpcImpl {
 //
 
 use jsonrpc_http_server::ServerBuilder;
+use secp256k1::hashes::Hash;
 
 use crate::{
-    bob_request::{validate_request, BobRequest},
+    bob_request::{validate_request, BobRequest, BobResponse},
     frost,
     json_rpc_stuff::RpcCtx,
 };
 
 pub fn run_server(
-    address: &str,
+    address: Option<&str>,
     ctx: RpcCtx,
     key_package: frost::KeyPackage,
     pubkey_package: frost::PublicKeyPackage,
 ) {
+    let address = address.unwrap_or("127.0.0.1:6666");
+
     let rpc_impl = RpcImpl {
         ctx,
         key_package,

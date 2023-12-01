@@ -9,3 +9,6 @@ pub const ZKBITCOIN_ADDRESS: &str = "tb1q5pxn428emp73saglk7ula0yx5j7ehegu6ud6ad"
 
 /// Number of confirmation required for a transaction to be considered final.
 pub const MINIMUM_CONFIRMATIONS: i32 = 6;
+
+/// THe JSON-RPC version to use with bitcoind.
+pub const BITCOIN_JSON_RPC_VERSION: &str = "1.0";

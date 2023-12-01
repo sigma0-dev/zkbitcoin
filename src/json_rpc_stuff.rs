@@ -4,12 +4,13 @@
 
 use base64::{engine::general_purpose, Engine};
 use bitcoin::{Transaction, Txid};
-use itertools::Itertools;
 use reqwest::{
     header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE},
     Client,
 };
 use std::time::Duration;
+
+use crate::constants::BITCOIN_JSON_RPC_VERSION;
 
 //
 // Context
@@ -17,14 +18,21 @@ use std::time::Duration;
 
 #[derive(Default)]
 pub struct RpcCtx {
+    pub version: Option<&'static str>,
     pub wallet: Option<String>,
     pub address: Option<String>,
     pub auth: Option<String>,
 }
 
 impl RpcCtx {
-    pub fn new(wallet: Option<String>, address: Option<String>, auth: Option<String>) -> Self {
+    pub fn new(
+        version: Option<&'static str>,
+        wallet: Option<String>,
+        address: Option<String>,
+        auth: Option<String>,
+    ) -> Self {
         let ctx = Self {
+            version,
             wallet,
             address,
             auth,
@@ -67,6 +75,7 @@ impl RpcCtx {
 
     pub fn for_testing() -> Self {
         Self {
+            version: Some(BITCOIN_JSON_RPC_VERSION),
             wallet: Some("mywallet".to_string()),
             address: Some(JSON_RPC_ENDPOINT.to_string()),
             auth: Some(JSON_RPC_AUTH.to_string()),
@@ -95,7 +104,7 @@ pub async fn json_rpc_request<'a>(
     // create the request
     let request = jsonrpc::Request::<'a> {
         // bitcoind doesn't seem to support anything else but json rpc 1.0
-        jsonrpc: Some("1.0"),
+        jsonrpc: ctx.version,
         // I don't think that field is useful (https://www.jsonrpc.org/specification_v1)
         id: serde_json::Value::String("whatevs".to_string()),
         method,
@@ -109,6 +118,11 @@ pub async fn json_rpc_request<'a>(
             AUTHORIZATION,
             HeaderValue::from_str(&format!("Basic {}", user_n_pw)).unwrap(),
         );
+    }
+
+    {
+        let body = serde_json::to_string_pretty(&request).unwrap();
+        println!("- body: {body}");
     }
 
     let body = serde_json::to_string(&request).unwrap();

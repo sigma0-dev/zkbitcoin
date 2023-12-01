@@ -1,9 +1,9 @@
-use std::{env, path::PathBuf, str::FromStr};
+use std::{path::PathBuf, str::FromStr};
 
 use clap::{Parser, Subcommand};
-use frost_secp256k1::Identifier;
 use zkbitcoin::{
-    alice_sign_tx::generate_and_broadcast_transaction, frost, json_rpc_stuff::RpcCtx, plonk,
+    alice_sign_tx::generate_and_broadcast_transaction, bob_request::send_bob_request,
+    constants::BITCOIN_JSON_RPC_VERSION, frost, json_rpc_stuff::RpcCtx, plonk,
 };
 
 #[derive(Parser)]
@@ -60,7 +60,7 @@ enum Commands {
         /// The path to the full proof public inputs
         /// (see `examples/circuit/proof_inputs.json` for an example).
         #[arg(short, long)]
-        proof_inputs_path: Option<String>,
+        inputs_path: Option<String>,
 
         /// The path to the full proof.
         /// (see `examples/circuit/proof.json` for an example).
@@ -108,6 +108,8 @@ enum Commands {
 
 #[tokio::main]
 async fn main() {
+    env_logger::init();
+
     let cli = Cli::parse();
 
     match &cli.command {
@@ -119,7 +121,12 @@ async fn main() {
             public_inputs_path,
             satoshi_amount,
         } => {
-            let ctx = RpcCtx::new(wallet.clone(), address.clone(), auth.clone());
+            let ctx = RpcCtx::new(
+                Some(BITCOIN_JSON_RPC_VERSION),
+                wallet.clone(),
+                address.clone(),
+                auth.clone(),
+            );
 
             let (vk, vk_hash) = {
                 // open vk file
@@ -178,13 +185,15 @@ async fn main() {
                 generate_and_broadcast_transaction(&ctx, &vk_hash, public_inputs, *satoshi_amount)
                     .await
                     .unwrap();
+
+            println!("txid: {}", txid);
         }
 
         Commands::UnlockFundsRequest {
             mpc_address,
             txid,
             verifier_key_path,
-            proof_inputs_path,
+            inputs_path,
             proof_path,
         } => {
             // get proof, vk, and inputs
@@ -200,7 +209,7 @@ async fn main() {
                     .unwrap_or_else(|_| panic!("file not found at path: {:?}", full_path));
                 serde_json::from_reader(file).expect("error while reading file")
             };
-            let public_inputs: Vec<String> = if let Some(path) = proof_inputs_path {
+            let public_inputs: Vec<String> = if let Some(path) = inputs_path {
                 let full_path = PathBuf::from(path);
                 let file = std::fs::File::open(&full_path)
                     .unwrap_or_else(|_| panic!("file not found at path: {:?}", full_path));
@@ -221,9 +230,11 @@ async fn main() {
 
             // send bob's request to the MPC committee.
             // TODO: we need a coordinator.
-            const MPC_ADDRESS: &str = "TODO";
+            const MPC_ADDRESS: &str = "http://127.0.0.1:6666";
             let mpc_address = mpc_address.as_deref().unwrap_or(MPC_ADDRESS);
-            todo!();
+            let bob_response = send_bob_request(mpc_address, bob_request).await.unwrap();
+
+            println!("{:?}", bob_response);
         }
 
         Commands::GenerateCommittee {
@@ -259,7 +270,12 @@ async fn main() {
             key_path,
             publickey_package_path,
         } => {
-            let ctx = RpcCtx::new(wallet.clone(), address.clone(), auth.clone());
+            let ctx = RpcCtx::new(
+                Some(BITCOIN_JSON_RPC_VERSION),
+                wallet.clone(),
+                address.clone(),
+                auth.clone(),
+            );
 
             let key_package = {
                 let full_path = PathBuf::from(key_path);
@@ -277,11 +293,7 @@ async fn main() {
                 publickey_package
             };
 
-            // zkbitcoin::committee::node::run_server(
-            //     "http://127.0.0.1:6666",
-            //     key_package,
-            //     pubkey_package,
-            // );
+            zkbitcoin::committee::node::run_server(None, ctx, key_package, pubkey_package);
         }
     }
 }
