@@ -179,7 +179,7 @@ pub async fn fetch_smart_contract(
 /// Validates a request received from Bob.
 pub async fn validate_request(
     ctx: &RpcCtx,
-    request: BobRequest,
+    request: &BobRequest,
     smart_contract: Option<SmartContract>,
 ) -> Result<(), &'static str> {
     // fetch the smart contract if not given
@@ -315,7 +315,7 @@ mod tests {
         // try to validate the request
         let ctx = RpcCtx::for_testing();
 
-        validate_request(&ctx, bob_request, Some(smart_contract))
+        validate_request(&ctx, &bob_request, Some(smart_contract))
             .await
             .unwrap();
     }

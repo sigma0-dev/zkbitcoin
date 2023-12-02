@@ -293,7 +293,9 @@ async fn main() {
                 publickey_package
             };
 
-            zkbitcoin::committee::node::run_server(None, ctx, key_package, pubkey_package);
+            zkbitcoin::committee::node::run_server(None, ctx, key_package, pubkey_package)
+                .await
+                .unwrap();
         }
     }
 }

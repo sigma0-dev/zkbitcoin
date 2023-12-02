@@ -8,24 +8,24 @@ pub struct Ctx {
     pub pubkey_package: frost::PublicKeyPackage,
 }
 
-async fn unlock_funds(params: Params<'static>, context: Arc<Ctx>) -> RpcResult<u64> {
+async fn unlock_funds(params: Params<'static>, context: Arc<Ctx>) -> RpcResult<BobResponse> {
     // get bob request
-    println!("debug: {:?}", params);
+    let bob_request: [BobRequest; 1] = params.parse()?;
+    println!("received request: {:?}", bob_request);
 
     // validate request
-    // validate_request(&context.bitcoin_rpc_ctx, bob_request, None)
-    //     .await
-    //     .unwrap();
+    validate_request(&context.bitcoin_rpc_ctx, &bob_request[0], None)
+        .await
+        .unwrap(); // TODO: remove unwrap
 
-    // TODO: do more stuff
+    // TODO: what do we do if the request is valid at this point? Do we just mark it as "yes I will produce a signature to unlock this funds if needed?"
 
     // response
     let bob_response = BobResponse {
         txid: Txid::all_zeros(),
     };
-    let res = serde_json::to_value(&bob_response).unwrap();
 
-    RpcResult::Ok(5)
+    RpcResult::Ok(bob_response)
 }
 
 use jsonrpsee::{
@@ -59,14 +59,12 @@ pub async fn run_server(
         .build(address.parse::<SocketAddr>()?)
         .await?;
     let mut module = RpcModule::new(ctx);
-    module.register_async_method("say_hello", unlock_funds)?;
+    module.register_async_method("unlock_funds", unlock_funds)?;
 
     let addr = server.local_addr()?;
     let handle = server.start(module);
 
-    // In this example we don't care about doing shutdown so let's it run forever.
-    // You may use the `ServerHandle` to shut it down or manage it yourself.
-    tokio::spawn(handle.stopped());
+    handle.stopped().await;
 
     Ok(addr)
 }
