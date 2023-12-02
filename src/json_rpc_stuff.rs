@@ -105,7 +105,7 @@ pub async fn json_rpc_request<'a>(
     params: &'a [Box<serde_json::value::RawValue>],
 ) -> Result<String, reqwest::Error> {
     // create the request
-    let request = jsonrpc::Request::<'a> {
+    let request = bitcoincore_rpc::jsonrpc::Request::<'a> {
         // bitcoind doesn't seem to support anything else but json rpc 1.0
         jsonrpc: ctx.version,
         // I don't think that field is useful (https://www.jsonrpc.org/specification_v1)
@@ -178,7 +178,7 @@ pub async fn fund_raw_transaction<'a>(
     .map_err(|_| "fundrawtransaction error")?;
 
     // TODO: get rid of unwrap in here
-    let response: jsonrpc::Response = serde_json::from_str(&response).unwrap();
+    let response: bitcoincore_rpc::jsonrpc::Response = serde_json::from_str(&response).unwrap();
     let parsed: bitcoincore_rpc::json::FundRawTransactionResult = response.result().unwrap();
     let tx: Transaction = bitcoin::consensus::encode::deserialize(&parsed.hex).unwrap();
     let actual_hex = hex::encode(&parsed.hex);
@@ -206,7 +206,7 @@ pub async fn sign_transaction<'a>(
     .map_err(|_| "signrawtransactionwithwallet error")?;
 
     // TODO: get rid of unwrap in here
-    let response: jsonrpc::Response = serde_json::from_str(&response).unwrap();
+    let response: bitcoincore_rpc::jsonrpc::Response = serde_json::from_str(&response).unwrap();
     let parsed: bitcoincore_rpc::json::SignRawTransactionResult = response.result().unwrap();
     let tx: Transaction = bitcoin::consensus::encode::deserialize(&parsed.hex).unwrap();
     let actual_hex = hex::encode(&parsed.hex);
@@ -234,7 +234,7 @@ pub async fn send_raw_transaction<'a>(
     .map_err(|_| "sendrawtransaction error")?;
 
     // TODO: get rid of unwrap in here
-    let response: jsonrpc::Response = serde_json::from_str(&response).unwrap();
+    let response: bitcoincore_rpc::jsonrpc::Response = serde_json::from_str(&response).unwrap();
     let txid: bitcoin::Txid = response.result().unwrap();
     println!("- txid broadcast to the network: {txid}");
     println!("- on an explorer: https://blockstream.info/testnet/tx/{txid}");

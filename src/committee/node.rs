@@ -1,47 +1,38 @@
+use std::{net::SocketAddr, sync::Arc};
+
 use bitcoin::Txid;
-use jsonrpc_core::{futures, futures_util::future, BoxFuture, Result};
-use jsonrpc_derive::rpc;
 
-#[rpc]
-pub trait Rpc {
-    /// Unlock funds for a smart contract
-    #[rpc(name = "unlock_funds")]
-    fn unlock_funds(&self, request: BobRequest) -> Result<BobResponse>;
-}
-
-pub struct RpcImpl {
-    pub ctx: RpcCtx,
+pub struct Ctx {
+    pub bitcoin_rpc_ctx: RpcCtx,
     pub key_package: frost::KeyPackage,
     pub pubkey_package: frost::PublicKeyPackage,
 }
 
-impl Rpc for RpcImpl {
-    fn unlock_funds(&self, request: BobRequest) -> Result<BobResponse> {
-        println!("receied a request to unlock funds: {:?}", request);
+async fn unlock_funds(params: Params<'static>, context: Arc<Ctx>) -> RpcResult<u64> {
+    // get bob request
+    println!("debug: {:?}", params);
 
-        // validate the request
-        println!("validating the request...");
-        if let Some(err) =
-            futures::executor::block_on(validate_request(&self.ctx, request, None)).err()
-        {
-            println!("couldn't validate");
-            return Err(jsonrpc_core::Error::invalid_params(
-                "couldn't validate the request !!",
-            ));
-        }
-        println!("validated!");
+    // validate request
+    // validate_request(&context.bitcoin_rpc_ctx, bob_request, None)
+    //     .await
+    //     .unwrap();
 
-        Ok(BobResponse {
-            txid: Txid::all_zeros(),
-        })
-    }
+    // TODO: do more stuff
+
+    // response
+    let bob_response = BobResponse {
+        txid: Txid::all_zeros(),
+    };
+    let res = serde_json::to_value(&bob_response).unwrap();
+
+    RpcResult::Ok(5)
 }
 
-//
-//
-//
-
-use jsonrpc_http_server::ServerBuilder;
+use jsonrpsee::{
+    server::{RpcModule, Server},
+    types::Params,
+};
+use jsonrpsee_core::RpcResult;
 use secp256k1::hashes::Hash;
 
 use crate::{
@@ -50,27 +41,32 @@ use crate::{
     json_rpc_stuff::RpcCtx,
 };
 
-pub fn run_server(
+pub async fn run_server(
     address: Option<&str>,
     ctx: RpcCtx,
     key_package: frost::KeyPackage,
     pubkey_package: frost::PublicKeyPackage,
-) {
+) -> anyhow::Result<SocketAddr> {
     let address = address.unwrap_or("127.0.0.1:6666");
 
-    let rpc_impl = RpcImpl {
-        ctx,
+    let ctx = Ctx {
+        bitcoin_rpc_ctx: ctx,
         key_package,
         pubkey_package,
     };
 
-    let mut io = jsonrpc_core::IoHandler::new();
-    io.extend_with(rpc_impl.to_delegate());
+    let server = Server::builder()
+        .build(address.parse::<SocketAddr>()?)
+        .await?;
+    let mut module = RpcModule::new(ctx);
+    module.register_async_method("say_hello", unlock_funds)?;
 
-    let server = ServerBuilder::new(io)
-        .threads(3)
-        .start_http(&address.parse().unwrap())
-        .unwrap();
+    let addr = server.local_addr()?;
+    let handle = server.start(module);
 
-    server.wait();
+    // In this example we don't care about doing shutdown so let's it run forever.
+    // You may use the `ServerHandle` to shut it down or manage it yourself.
+    tokio::spawn(handle.stopped());
+
+    Ok(addr)
 }

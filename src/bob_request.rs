@@ -34,7 +34,7 @@ pub struct BobRequest {
     pub public_inputs: Vec<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BobResponse {
     pub txid: bitcoin::Txid,
 }
@@ -62,7 +62,7 @@ pub async fn send_bob_request(
     })?;
 
     // TODO: get rid of unwrap in here
-    let response: jsonrpc::Response = serde_json::from_str(&resp).unwrap();
+    let response: bitcoincore_rpc::jsonrpc::Response = serde_json::from_str(&resp).unwrap();
     let bob_response: BobResponse = response.result().unwrap();
 
     Ok(bob_response)
@@ -156,7 +156,7 @@ pub async fn fetch_smart_contract(
         .map_err(|_| "gettransaction error")?;
 
         // TODO: get rid of unwrap in here
-        let response: jsonrpc::Response = serde_json::from_str(&response).unwrap();
+        let response: bitcoincore_rpc::jsonrpc::Response = serde_json::from_str(&response).unwrap();
         let parsed: bitcoincore_rpc::json::GetTransactionResult = response.result().unwrap();
         let tx: Transaction = bitcoin::consensus::encode::deserialize(&parsed.hex).unwrap();
         let actual_hex = hex::encode(&parsed.hex);
