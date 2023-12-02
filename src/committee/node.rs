@@ -6,6 +6,7 @@ use jsonrpsee::{
     types::Params,
 };
 use jsonrpsee_core::RpcResult;
+use rand::thread_rng;
 use secp256k1::hashes::Hash;
 
 use crate::{
@@ -53,6 +54,32 @@ async fn unlock_funds(params: Params<'static>, context: Arc<Ctx>) -> RpcResult<B
     };
 
     RpcResult::Ok(bob_response)
+}
+
+async fn round_1_signing(params: Params<'static>, context: Arc<Ctx>) -> RpcResult<()> {
+    let rng = &mut thread_rng();
+    let (nonces, commitments) =
+        frost_secp256k1::round1::commit(context.key_package.signing_share(), rng);
+
+    // TODO: store these locally
+
+    // TODO: return the commitments
+    Ok(())
+}
+
+async fn round_2_signing(params: Params<'static>, context: Arc<Ctx>) -> RpcResult<()> {
+    let rng = &mut thread_rng();
+
+    // TODO: get commitments from params
+    let bob_request: [BobRequest; 1] = params.parse()?;
+    println!("received request: {:?}", bob_request);
+
+    // TODO: signing package should be recreated no? as we want to ensure that we agree on what is being signed (should be a deterministic process).
+    let signing_package = frost_secp256k1::SigningPackage::new(commitments_map, message);
+    let signature_share = frost_secp256k1::round2::sign(&signing_package, nonces, key_package)?;
+
+    // TODO: return signature shares
+    Ok(())
 }
 
 //
