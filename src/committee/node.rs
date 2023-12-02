@@ -1,13 +1,40 @@
 use std::{net::SocketAddr, sync::Arc};
 
 use bitcoin::Txid;
+use jsonrpsee::{
+    server::{RpcModule, Server},
+    types::Params,
+};
+use jsonrpsee_core::RpcResult;
+use secp256k1::hashes::Hash;
 
+use crate::{
+    bob_request::{validate_request, BobRequest, BobResponse},
+    frost,
+    json_rpc_stuff::RpcCtx,
+};
+
+//
+// Data structures
+//
+
+/// State of a node.
 pub struct Ctx {
+    /// Data needed to communicate to their bitcoin node.
     pub bitcoin_rpc_ctx: RpcCtx,
+
+    /// The secret key stuff they need.
     pub key_package: frost::KeyPackage,
+
+    /// The public key stuff they need.
     pub pubkey_package: frost::PublicKeyPackage,
 }
 
+//
+// Methods
+//
+
+/// Bob's request to unlock funds from a smart contract.
 async fn unlock_funds(params: Params<'static>, context: Arc<Ctx>) -> RpcResult<BobResponse> {
     // get bob request
     let bob_request: [BobRequest; 1] = params.parse()?;
@@ -28,18 +55,9 @@ async fn unlock_funds(params: Params<'static>, context: Arc<Ctx>) -> RpcResult<B
     RpcResult::Ok(bob_response)
 }
 
-use jsonrpsee::{
-    server::{RpcModule, Server},
-    types::Params,
-};
-use jsonrpsee_core::RpcResult;
-use secp256k1::hashes::Hash;
-
-use crate::{
-    bob_request::{validate_request, BobRequest, BobResponse},
-    frost,
-    json_rpc_stuff::RpcCtx,
-};
+//
+// Main server code
+//
 
 pub async fn run_server(
     address: Option<&str>,
