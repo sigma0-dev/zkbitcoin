@@ -230,6 +230,7 @@ pub async fn run_server(
     committee_cfg: CommitteeConfig,
 ) -> anyhow::Result<SocketAddr> {
     let address = address.unwrap_or("127.0.0.1:6666");
+    println!("- starting server at address http://{address}");
 
     let ctx = Orchestrator {
         bitcoin_rpc_ctx: ctx,

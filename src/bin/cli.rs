@@ -2,9 +2,13 @@ use std::{path::PathBuf, str::FromStr};
 
 use clap::{Parser, Subcommand};
 use zkbitcoin::{
-    alice_sign_tx::generate_and_broadcast_transaction, bob_request::send_bob_request,
-    committee::orchestrator::CommitteeConfig, constants::BITCOIN_JSON_RPC_VERSION, frost,
-    json_rpc_stuff::RpcCtx, plonk,
+    alice_sign_tx::generate_and_broadcast_transaction,
+    bob_request::send_bob_request,
+    committee::orchestrator::CommitteeConfig,
+    constants::{BITCOIN_JSON_RPC_VERSION, ORCHESTRATOR_ADDRESS},
+    frost,
+    json_rpc_stuff::RpcCtx,
+    plonk,
 };
 
 #[derive(Parser)]
@@ -47,8 +51,8 @@ enum Commands {
     /// Bob can use this to unlock funds from a smart contract.
     UnlockFundsRequest {
         /// The wallet name of the RPC full node.
-        #[arg(env = "MPC_ADDRESS")]
-        mpc_address: Option<String>,
+        #[arg(env = "ENDPOINT")]
+        orchestrator_address: Option<String>,
 
         /// The transaction ID that deployed the smart contract.
         #[arg(short, long)]
@@ -127,7 +131,7 @@ enum Commands {
         publickey_package_path: String,
 
         #[arg(short, long)]
-        committee_config_path: String,
+        committee_cfg_path: String,
     },
 }
 
@@ -215,7 +219,7 @@ async fn main() {
         }
 
         Commands::UnlockFundsRequest {
-            mpc_address,
+            orchestrator_address,
             txid,
             verifier_key_path,
             inputs_path,
@@ -255,8 +259,9 @@ async fn main() {
 
             // send bob's request to the MPC committee.
             // TODO: we need a coordinator.
-            const MPC_ADDRESS: &str = "http://127.0.0.1:6666";
-            let mpc_address = mpc_address.as_deref().unwrap_or(MPC_ADDRESS);
+            let mpc_address = orchestrator_address
+                .as_deref()
+                .unwrap_or(ORCHESTRATOR_ADDRESS);
             let bob_response = send_bob_request(mpc_address, bob_request).await.unwrap();
 
             println!("{:?}", bob_response);
@@ -329,7 +334,7 @@ async fn main() {
             auth,
             threshold,
             publickey_package_path,
-            committee_config_path,
+            committee_cfg_path,
         } => {
             // sanity check (unfortunately the publickey_package doesn't contain this info)
             assert!(*threshold > 0);
@@ -349,7 +354,7 @@ async fn main() {
             };
 
             let committee_cfg = {
-                let full_path = PathBuf::from(committee_config_path);
+                let full_path = PathBuf::from(committee_cfg_path);
                 let file = std::fs::File::open(full_path).expect("file not found");
                 let publickey_package: CommitteeConfig =
                     serde_json::from_reader(file).expect("error while reading file");
@@ -357,7 +362,7 @@ async fn main() {
             };
 
             zkbitcoin::committee::orchestrator::run_server(
-                None,
+                Some(ORCHESTRATOR_ADDRESS),
                 ctx,
                 pubkey_package,
                 committee_cfg,

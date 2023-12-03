@@ -229,6 +229,7 @@ pub async fn run_server(
     pubkey_package: frost::PublicKeyPackage,
 ) -> anyhow::Result<SocketAddr> {
     let address = address.unwrap_or("127.0.0.1:6666");
+    println!("- starting server at address http://{address}");
 
     let ctx = NodeState {
         bitcoin_rpc_ctx: ctx,

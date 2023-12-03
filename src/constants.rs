@@ -15,3 +15,5 @@ pub const BITCOIN_JSON_RPC_VERSION: &str = "1.0";
 
 pub const FEE_ZKBITCOIN_SAT: u64 = 100;
 pub const FEE_BITCOIN_SAT: u64 = 100;
+
+pub const ORCHESTRATOR_ADDRESS: &str = "127.0.0.1:6666";
