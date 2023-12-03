@@ -4,12 +4,13 @@ use std::{
     str::FromStr,
 };
 
-use bitcoin::{Amount, PublicKey, Transaction, TxOut};
+use bitcoin::{Address, Amount, PublicKey, Transaction, TxOut};
 use serde::{Deserialize, Serialize};
 use tempdir::TempDir;
 
 use crate::{
     constants::{MINIMUM_CONFIRMATIONS, ZKBITCOIN_PUBKEY},
+    get_network,
     json_rpc_stuff::json_rpc_request,
 };
 use crate::{json_rpc_stuff::RpcCtx, plonk};
@@ -32,6 +33,24 @@ pub struct BobRequest {
 
     /// All public inputs used in the proof (if any).
     pub public_inputs: Vec<String>,
+}
+
+impl BobRequest {
+    // TODO: does an address fit in a public element?
+    pub fn get_bob_address(&self) -> Result<Address, &'static str> {
+        if self.public_inputs.len() < 1 {
+            return Err("public input should at least be of size 1 (as first public input is bob's address)");
+        }
+
+        let address_str = &self.public_inputs[0];
+        let bob_address = bitcoin::Address::from_str(address_str)
+            .map_err(|_| "failed to deserialize the first public input as a bitcoin address")?;
+        let bob_address = bob_address.require_network(get_network()).map_err(|_| {
+            "network of bitcoin address needs to be testnet or bitcoin (depending on cfg)"
+        })?;
+
+        Ok(bob_address)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -87,7 +106,10 @@ pub struct SmartContract {
 }
 
 /// Extracts smart contract information as a [SmartContract] from a transaction.
-pub fn parse_transaction(raw_tx: &Transaction, zkbitcoin_pubkey: &PublicKey) -> Result<SmartContract, &'static str> {
+pub fn parse_transaction(
+    raw_tx: &Transaction,
+    zkbitcoin_pubkey: &PublicKey,
+) -> Result<SmartContract, &'static str> {
     let zkbitcoin_pubkey = zkbitcoin_pubkey.to_owned();
 
     // ensure that the first or second output is to 0xzkBitcoin and extract amount

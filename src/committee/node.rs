@@ -1,6 +1,5 @@
 use std::{
     collections::{BTreeMap, HashMap},
-    env,
     net::SocketAddr,
     str::FromStr,
     sync::{Arc, RwLock},
@@ -23,7 +22,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     bob_request::{validate_request, BobRequest, BobResponse, SmartContract},
     constants::{FEE_BITCOIN_SAT, FEE_ZKBITCOIN_SAT},
-    frost, get_network,
+    frost,
     json_rpc_stuff::RpcCtx,
     mpc_sign_tx::create_transaction,
 };
@@ -97,26 +96,11 @@ async fn round_1_signing(params: Params<'static>, context: Arc<Ctx>) -> RpcResul
     };
 
     // get bob address from first public input (TODO: move this to validate_request?)
-    if bob_request.public_inputs.len() < 1 {
-        return RpcResult::Err(ErrorObjectOwned::owned(
-            jsonrpsee_types::error::UNKNOWN_ERROR_CODE,
-            "public input should at least be of size 1 (as first public input is bob's address)",
-            Some(format!("no public inputs")),
-        ));
-    }
-    let address_str = &bob_request.public_inputs[0];
-    let bob_address = bitcoin::Address::from_str(address_str).map_err(|_| {
+    let bob_address = bob_request.get_bob_address().map_err(|err| {
         ErrorObjectOwned::owned(
             jsonrpsee_types::error::UNKNOWN_ERROR_CODE,
-            "failed to deserialize the first public input as a bitcoin address",
-            Some(format!("see other error")),
-        )
-    })?; // TODO: does an address fit in a public element?
-    let bob_address = bob_address.require_network(get_network()).map_err(|_| {
-        ErrorObjectOwned::owned(
-            jsonrpsee_types::error::UNKNOWN_ERROR_CODE,
-            "network of bitcoin address needs to be testnet or bitcoin (depending on cfg)",
-            Some(format!("see other error (bis)")),
+            "couldn't get bob address:",
+            Some(format!("{err}")),
         )
     })?;
 
@@ -160,15 +144,15 @@ async fn round_1_signing(params: Params<'static>, context: Arc<Ctx>) -> RpcResul
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Round2Request {
-    txid: Txid,
-    proof_hash: [u8; 32],
-    commitments_map:
+    pub txid: Txid,
+    pub proof_hash: [u8; 32],
+    pub commitments_map:
         BTreeMap<frost_secp256k1::Identifier, frost_secp256k1::round1::SigningCommitments>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Round2Response {
-    signature_share: frost_secp256k1::round2::SignatureShare,
+    pub signature_share: frost_secp256k1::round2::SignatureShare,
 }
 
 async fn round_2_signing(params: Params<'static>, context: Arc<Ctx>) -> RpcResult<Round2Response> {
@@ -212,38 +196,7 @@ async fn round_2_signing(params: Params<'static>, context: Arc<Ctx>) -> RpcResul
         FEE_BITCOIN_SAT,
         FEE_ZKBITCOIN_SAT,
     );
-    let message = {
-        // the first input is the taproot UTXO we want to spend
-        let tx_ind = 0;
-
-        // the sighash flag is always ALL
-        let hash_ty = TapSighashType::All;
-
-        // sighash
-        let mut cache = SighashCache::new(transaction);
-        let mut sig_msg = Vec::new();
-        cache
-            .taproot_encode_signing_data_to(
-                &mut sig_msg,
-                tx_ind,
-                &Prevouts::All(&smart_contract.prev_outs),
-                None,
-                None,
-                hash_ty,
-            )
-            .unwrap();
-        let sighash = cache
-            .taproot_signature_hash(
-                tx_ind,
-                &Prevouts::All(&smart_contract.prev_outs),
-                None,
-                None,
-                hash_ty,
-            )
-            .unwrap();
-        sighash.to_byte_array()
-        //secp256k1::Message::from_digest(sighash.to_byte_array())
-    };
+    let message = get_digest_to_hash(&transaction, &smart_contract);
 
     // signing package should be recreated no? as we want to ensure that we agree on what is being signed (should be a deterministic process).
     let signing_package =
@@ -259,7 +212,7 @@ async fn round_2_signing(params: Params<'static>, context: Arc<Ctx>) -> RpcResul
             },
         )?;
 
-    // TODO: return signature shares
+    // return signature shares
     let round2_response = Round2Response { signature_share };
     RpcResult::Ok(round2_response)
 }
@@ -296,4 +249,40 @@ pub async fn run_server(
     handle.stopped().await;
 
     Ok(addr)
+}
+
+// TODO: move this to mpc_sign_tx?
+pub fn get_digest_to_hash(
+    transaction: &bitcoin::Transaction,
+    smart_contract: &SmartContract,
+) -> [u8; 32] {
+    // the first input is the taproot UTXO we want to spend
+    let tx_ind = 0;
+
+    // the sighash flag is always ALL
+    let hash_ty = TapSighashType::All;
+
+    // sighash
+    let mut cache = SighashCache::new(transaction);
+    let mut sig_msg = Vec::new();
+    cache
+        .taproot_encode_signing_data_to(
+            &mut sig_msg,
+            tx_ind,
+            &Prevouts::All(&smart_contract.prev_outs),
+            None,
+            None,
+            hash_ty,
+        )
+        .unwrap();
+    let sighash = cache
+        .taproot_signature_hash(
+            tx_ind,
+            &Prevouts::All(&smart_contract.prev_outs),
+            None,
+            None,
+            hash_ty,
+        )
+        .unwrap();
+    sighash.to_byte_array()
 }
