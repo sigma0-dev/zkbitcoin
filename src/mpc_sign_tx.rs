@@ -158,17 +158,11 @@ mod tests {
 
     use rand_chacha::ChaCha20Rng;
 
-    use crate::frost::{gen_frost_keys, to_xonly_pubkey};
+    use crate::frost::{gen_frost_keys, sign_transaction_frost, to_xonly_pubkey};
     use crate::{
         constants::ZKBITCOIN_ADDRESS,
         json_rpc_stuff::{send_raw_transaction, TransactionOrHex},
     };
-<<<<<<< Updated upstream
-    use crate::frost::{gen_frost_keys, sign_transaction_frost, to_xonly_pubkey};
-||||||| Stash base
-    use crate::frost::{gen_frost_keys, to_xonly_pubkey};
-=======
->>>>>>> Stashed changes
 
     use super::*;
     /*
@@ -247,7 +241,7 @@ mod tests {
 
         // Spend this fucker now
         let vout = 0;
-        let satoshi_amount = amount;
+        let satoshi_amount = Amount::from_sat(amount);
 
         let bob_address = Address::from_str(ZKBITCOIN_ADDRESS)
             .unwrap()
@@ -271,7 +265,7 @@ mod tests {
         let sk = secp256k1::SecretKey::from_str(
             "b2f7f581d6de3c06a822fd6e7e8265fbc00f8401696a5bdc34f5a6d2ff3f922f",
         )
-            .unwrap();
+        .unwrap();
         let sig = sign_transaction_frost(&key_packages, &pubkey_package, &tx, &[tx_out]);
 
         // place signature in witness
