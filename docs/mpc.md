@@ -54,9 +54,14 @@ pub struct SigningTask {
 
 ```rust
 pub struct LocalSigningTask {
-    proof_hash: Vec<u8>,
-    message: Vec<u8>,
-    commitments: Vec<SigningCommitments>,
+    /// So we know if we're processing the same request twice.
+    pub proof_hash: [u8; 32],
+    /// The smart contract that locked the value.
+    pub smart_contract: SmartContract,
+    /// The commitments we produced to start the signature (round 1).
+    pub commitments: frost_secp256k1::round1::SigningCommitments,
+    /// The nonces behind these commitments
+    pub nonces: frost_secp256k1::round1::SigningNonces,
 }
 ```
 

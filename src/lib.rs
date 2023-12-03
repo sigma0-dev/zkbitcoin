@@ -15,3 +15,15 @@ pub mod bob_request;
 
 /// 3. The zkBitcoin committee produce a collaborative schnorr signature to unlock the funds for Bob.
 pub mod mpc_sign_tx;
+
+//
+// Helpers
+//
+
+pub fn get_network() -> bitcoin::Network {
+    if std::env::var("MAINNET").is_ok() {
+        bitcoin::Network::Bitcoin
+    } else {
+        bitcoin::Network::Testnet
+    }
+}

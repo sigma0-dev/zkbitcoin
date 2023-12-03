@@ -4,7 +4,7 @@ use std::{
     str::FromStr,
 };
 
-use bitcoin::{Amount, PublicKey, Transaction};
+use bitcoin::{Amount, PublicKey, Transaction, TxOut};
 use serde::{Deserialize, Serialize};
 use tempdir::TempDir;
 
@@ -19,7 +19,7 @@ use crate::{json_rpc_stuff::RpcCtx, plonk};
 //
 
 /// A request from Bob to unlock funds from a smart contract should look like this.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BobRequest {
     /// The transaction ID that deployed the smart contract.
     pub txid: bitcoin::Txid,
@@ -36,7 +36,8 @@ pub struct BobRequest {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BobResponse {
-    pub txid: bitcoin::Txid,
+    //pub txid: bitcoin::Txid,
+    pub commitments: frost_secp256k1::round1::SigningCommitments,
 }
 
 pub async fn send_bob_request(
@@ -73,11 +74,16 @@ pub async fn send_bob_request(
 //
 
 /// All the metadata that describes a smart contract.
+#[derive(Clone)]
 pub struct SmartContract {
     pub locked_value: Amount,
     pub vk_hash: [u8; 32],
     pub public_inputs: Vec<Vec<u8>>,
     pub vout_of_zkbitcoin_utxo: u32,
+
+    /// _All_ the outputs of the deploy transaction.
+    /// (needed to sign a transaction to unlock the funds).
+    pub prev_outs: Vec<bitcoin::TxOut>,
 }
 
 /// Extracts smart contract information as a [SmartContract] from a transaction.
@@ -131,6 +137,7 @@ pub fn parse_transaction(raw_tx: &Transaction, zkbitcoin_pubkey: &PublicKey) -> 
         vk_hash,
         public_inputs,
         vout_of_zkbitcoin_utxo,
+        prev_outs: raw_tx.output.clone(),
     };
     Ok(smart_contract)
 }
@@ -182,7 +189,7 @@ pub async fn validate_request(
     ctx: &RpcCtx,
     request: &BobRequest,
     smart_contract: Option<SmartContract>,
-) -> Result<(), &'static str> {
+) -> Result<SmartContract, &'static str> {
     // fetch the smart contract if not given
     let smart_contract = if let Some(x) = smart_contract {
         x
@@ -252,7 +259,8 @@ pub async fn validate_request(
     // clean up
     remove_dir_all(tmp_dir).expect("failed to remove temp dir");
 
-    Ok(())
+    //
+    Ok(smart_contract)
 }
 
 #[cfg(test)]
@@ -303,6 +311,7 @@ mod tests {
             vk_hash,
             public_inputs: truncated_pi,
             vout_of_zkbitcoin_utxo: 0,
+            prev_outs: vec![],
         };
 
         // create bob request

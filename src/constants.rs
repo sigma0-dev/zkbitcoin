@@ -12,3 +12,6 @@ pub const MINIMUM_CONFIRMATIONS: i32 = 6;
 
 /// THe JSON-RPC version to use with bitcoind.
 pub const BITCOIN_JSON_RPC_VERSION: &str = "1.0";
+
+pub const FEE_ZKBITCOIN_SAT: u64 = 100;
+pub const FEE_BITCOIN_SAT: u64 = 100;

@@ -18,7 +18,7 @@ use crate::{constants::ZKBITCOIN_PUBKEY, json_rpc_stuff::RpcCtx};
 
 pub fn create_transaction(
     utxo: (Txid, u32),
-    satoshi_amount: u64,
+    amount: Amount,
     bob_address: Address,
     fee_bitcoin_sat: u64,
     fee_zkbitcoin_sat: u64,
@@ -41,19 +41,21 @@ pub fn create_transaction(
     };
 
     // we need to subtract the amount  to cover for the fee
-    let amount_for_bob = satoshi_amount - fee_bitcoin_sat - fee_zkbitcoin_sat;
+    let amount_for_bob =
+        amount - Amount::from_sat(fee_bitcoin_sat) - Amount::from_sat(fee_zkbitcoin_sat);
 
     let outputs = {
         let mut outputs = vec![];
 
         // first output is a P2TR to Bob
         outputs.push(TxOut {
-            value: Amount::from_sat(amount_for_bob),
+            value: amount_for_bob,
             script_pubkey: bob_address.script_pubkey(),
         });
 
-        // second output is to us
+        // second output is to zkBitcoin
         let secp = secp256k1::Secp256k1::default();
+        // TODO: obviously we shouldn't send it to this address no? This is controlled by an MPC instead of by us
         let zkbitcoin_pubkey: PublicKey = PublicKey::from_str(ZKBITCOIN_PUBKEY).unwrap();
         let internal_key = UntweakedPublicKey::from(zkbitcoin_pubkey);
         outputs.push(TxOut {
@@ -156,13 +158,17 @@ mod tests {
 
     use rand_chacha::ChaCha20Rng;
 
+    use crate::frost::{gen_frost_keys, to_xonly_pubkey};
     use crate::{
         constants::ZKBITCOIN_ADDRESS,
-        json_rpc_stuff::{
-            fund_raw_transaction, send_raw_transaction, sign_transaction, TransactionOrHex,
-        },
+        json_rpc_stuff::{send_raw_transaction, TransactionOrHex},
     };
+<<<<<<< Updated upstream
     use crate::frost::{gen_frost_keys, sign_transaction_frost, to_xonly_pubkey};
+||||||| Stash base
+    use crate::frost::{gen_frost_keys, to_xonly_pubkey};
+=======
+>>>>>>> Stashed changes
 
     use super::*;
     /*
@@ -292,7 +298,7 @@ mod tests {
             Txid::from_str("02fcc5b458ff032d4c82b12ce8c1c4c5b88c91bd7953bb2cdbb212f3219e91c3")
                 .unwrap();
         let vout = 0;
-        let satoshi_amount = 1000;
+        let satoshi_amount = Amount::from_sat(1000);
 
         let bob_address = Address::from_str(ZKBITCOIN_ADDRESS)
             .unwrap()
@@ -311,7 +317,7 @@ mod tests {
 
         // prevouts
         let prevouts = vec![TxOut {
-            value: Amount::from_sat(satoshi_amount),
+            value: satoshi_amount,
             script_pubkey: ScriptBuf::from_hex(
                 "5120814c57829b8c1af9956a23a9d687779469b1d7c06ebecac01f81922761331ea4",
             )

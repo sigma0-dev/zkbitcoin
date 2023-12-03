@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use sha3::{Digest, Keccak256};
 
 /// The snarkjs plonk verifier key format.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VerifierKey {
     protocol: String,   // "plonk",
     curve: String,      // "bn128",
@@ -24,7 +24,7 @@ pub struct VerifierKey {
     w: String, //"6837567842312086091520287814181175430087169027974246751610506942214842701774"
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Proof {
     A: Vec<String>,
     B: Vec<String>,
@@ -43,6 +43,16 @@ pub struct Proof {
     eval_zw: String,
     protocol: String, // "plonk",
     curve: String,    //"bn128"
+}
+
+impl Proof {
+    pub fn hash(&self) -> [u8; 32] {
+        let mut hasher = Keccak256::new();
+        // I know, this is a really ugly way to hash a struct :D
+        hasher.update(serde_json::to_string(&self).unwrap());
+        let hash = hasher.finalize().to_vec();
+        hash.try_into().unwrap()
+    }
 }
 
 /// The public input that has to be used by the verifier
