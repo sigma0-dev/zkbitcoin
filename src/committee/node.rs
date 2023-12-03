@@ -1,14 +1,10 @@
 use std::{
     collections::{BTreeMap, HashMap},
     net::SocketAddr,
-    str::FromStr,
     sync::{Arc, RwLock},
 };
 
-use bitcoin::{
-    sighash::{Prevouts, SighashCache},
-    TapSighashType, Txid,
-};
+use bitcoin::Txid;
 use jsonrpsee::{
     server::{RpcModule, Server},
     types::Params,
@@ -16,7 +12,6 @@ use jsonrpsee::{
 use jsonrpsee_core::RpcResult;
 use jsonrpsee_types::ErrorObjectOwned;
 use rand::thread_rng;
-use secp256k1::hashes::Hash;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -24,7 +19,7 @@ use crate::{
     constants::{FEE_BITCOIN_SAT, FEE_ZKBITCOIN_SAT},
     frost,
     json_rpc_stuff::RpcCtx,
-    mpc_sign_tx::create_transaction,
+    mpc_sign_tx::{create_transaction, get_digest_to_hash},
 };
 
 //
@@ -32,7 +27,7 @@ use crate::{
 //
 
 /// State of a node.
-pub struct Ctx {
+pub struct NodeState {
     /// Data needed to communicate to their bitcoin node.
     pub bitcoin_rpc_ctx: RpcCtx,
 
@@ -65,7 +60,10 @@ pub struct LocalSigningTask {
 //
 
 /// Bob's request to unlock funds from a smart contract.
-async fn round_1_signing(params: Params<'static>, context: Arc<Ctx>) -> RpcResult<BobResponse> {
+async fn round_1_signing(
+    params: Params<'static>,
+    context: Arc<NodeState>,
+) -> RpcResult<BobResponse> {
     // get bob request
     let bob_request: [BobRequest; 1] = params.parse()?;
     let bob_request = &bob_request[0];
@@ -155,7 +153,10 @@ pub struct Round2Response {
     pub signature_share: frost_secp256k1::round2::SignatureShare,
 }
 
-async fn round_2_signing(params: Params<'static>, context: Arc<Ctx>) -> RpcResult<Round2Response> {
+async fn round_2_signing(
+    params: Params<'static>,
+    context: Arc<NodeState>,
+) -> RpcResult<Round2Response> {
     // get commitments from params
     let round2request: [Round2Request; 1] = params.parse()?;
     let round2request = &round2request[0];
@@ -229,7 +230,7 @@ pub async fn run_server(
 ) -> anyhow::Result<SocketAddr> {
     let address = address.unwrap_or("127.0.0.1:6666");
 
-    let ctx = Ctx {
+    let ctx = NodeState {
         bitcoin_rpc_ctx: ctx,
         key_package,
         pubkey_package,
@@ -249,40 +250,4 @@ pub async fn run_server(
     handle.stopped().await;
 
     Ok(addr)
-}
-
-// TODO: move this to mpc_sign_tx?
-pub fn get_digest_to_hash(
-    transaction: &bitcoin::Transaction,
-    smart_contract: &SmartContract,
-) -> [u8; 32] {
-    // the first input is the taproot UTXO we want to spend
-    let tx_ind = 0;
-
-    // the sighash flag is always ALL
-    let hash_ty = TapSighashType::All;
-
-    // sighash
-    let mut cache = SighashCache::new(transaction);
-    let mut sig_msg = Vec::new();
-    cache
-        .taproot_encode_signing_data_to(
-            &mut sig_msg,
-            tx_ind,
-            &Prevouts::All(&smart_contract.prev_outs),
-            None,
-            None,
-            hash_ty,
-        )
-        .unwrap();
-    let sighash = cache
-        .taproot_signature_hash(
-            tx_ind,
-            &Prevouts::All(&smart_contract.prev_outs),
-            None,
-            None,
-            hash_ty,
-        )
-        .unwrap();
-    sighash.to_byte_array()
 }

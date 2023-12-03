@@ -11,10 +11,48 @@ use bitcoin::{
 };
 use secp256k1::{hashes::Hash, All, Secp256k1, XOnlyPublicKey};
 
-use crate::json_rpc_stuff::{
-    fund_raw_transaction, send_raw_transaction, sign_transaction, TransactionOrHex,
+use crate::{
+    bob_request::SmartContract,
+    json_rpc_stuff::{
+        fund_raw_transaction, send_raw_transaction, sign_transaction, TransactionOrHex,
+    },
 };
 use crate::{constants::ZKBITCOIN_PUBKEY, json_rpc_stuff::RpcCtx};
+
+pub fn get_digest_to_hash(
+    transaction: &bitcoin::Transaction,
+    smart_contract: &SmartContract,
+) -> [u8; 32] {
+    // the first input is the taproot UTXO we want to spend
+    let tx_ind = 0;
+
+    // the sighash flag is always ALL
+    let hash_ty = TapSighashType::All;
+
+    // sighash
+    let mut cache = SighashCache::new(transaction);
+    let mut sig_msg = Vec::new();
+    cache
+        .taproot_encode_signing_data_to(
+            &mut sig_msg,
+            tx_ind,
+            &Prevouts::All(&smart_contract.prev_outs),
+            None,
+            None,
+            hash_ty,
+        )
+        .unwrap();
+    let sighash = cache
+        .taproot_signature_hash(
+            tx_ind,
+            &Prevouts::All(&smart_contract.prev_outs),
+            None,
+            None,
+            hash_ty,
+        )
+        .unwrap();
+    sighash.to_byte_array()
+}
 
 pub fn create_transaction(
     utxo: (Txid, u32),

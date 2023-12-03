@@ -3,7 +3,8 @@ use std::{path::PathBuf, str::FromStr};
 use clap::{Parser, Subcommand};
 use zkbitcoin::{
     alice_sign_tx::generate_and_broadcast_transaction, bob_request::send_bob_request,
-    constants::BITCOIN_JSON_RPC_VERSION, frost, json_rpc_stuff::RpcCtx, plonk,
+    committee::orchestrator::CommitteeConfig, constants::BITCOIN_JSON_RPC_VERSION, frost,
+    json_rpc_stuff::RpcCtx, plonk,
 };
 
 #[derive(Parser)]
@@ -103,6 +104,30 @@ enum Commands {
 
         #[arg(short, long)]
         publickey_package_path: String,
+    },
+
+    /// Starts an orchestrator
+    StartOrchestrator {
+        /// The wallet name of the RPC full node.
+        #[arg(env = "RPC_WALLET")]
+        wallet: Option<String>,
+
+        /// The `http(s)://address:port`` of the RPC full node.
+        #[arg(env = "RPC_ADDRESS")]
+        address: Option<String>,
+
+        /// The `user:password`` of the RPC full node.
+        #[arg(env = "RPC_AUTH")]
+        auth: Option<String>,
+
+        #[arg(short, long)]
+        threshold: usize,
+
+        #[arg(short, long)]
+        publickey_package_path: String,
+
+        #[arg(short, long)]
+        committee_config_path: String,
     },
 }
 
@@ -296,6 +321,49 @@ async fn main() {
             zkbitcoin::committee::node::run_server(None, ctx, key_package, pubkey_package)
                 .await
                 .unwrap();
+        }
+
+        Commands::StartOrchestrator {
+            wallet,
+            address,
+            auth,
+            threshold,
+            publickey_package_path,
+            committee_config_path,
+        } => {
+            // sanity check (unfortunately the publickey_package doesn't contain this info)
+            assert!(*threshold > 0);
+            let ctx = RpcCtx::new(
+                Some(BITCOIN_JSON_RPC_VERSION),
+                wallet.clone(),
+                address.clone(),
+                auth.clone(),
+            );
+
+            let pubkey_package = {
+                let full_path = PathBuf::from(publickey_package_path);
+                let file = std::fs::File::open(full_path).expect("file not found");
+                let publickey_package: frost::PublicKeyPackage =
+                    serde_json::from_reader(file).expect("error while reading file");
+                publickey_package
+            };
+
+            let committee_cfg = {
+                let full_path = PathBuf::from(committee_config_path);
+                let file = std::fs::File::open(full_path).expect("file not found");
+                let publickey_package: CommitteeConfig =
+                    serde_json::from_reader(file).expect("error while reading file");
+                publickey_package
+            };
+
+            zkbitcoin::committee::orchestrator::run_server(
+                None,
+                ctx,
+                pubkey_package,
+                committee_cfg,
+            )
+            .await
+            .unwrap();
         }
     }
 }
