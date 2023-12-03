@@ -2,8 +2,12 @@ use frost_secp256k1 as frost;
 use rand::{thread_rng, RngCore};
 use secp256k1::XOnlyPublicKey;
 use std::collections::{BTreeMap, HashMap};
+use bitcoin::{TapSighashType, TapTweakHash, Transaction, TxOut};
+use bitcoin::sighash::{Prevouts, SighashCache};
+use frost_secp256k1::{Signature, VerifyingKey};
 
 pub use frost::keys::{KeyPackage, PublicKeyPackage};
+use secp256k1::hashes::Hash;
 
 //
 // copy/paste from their example
@@ -242,9 +246,10 @@ pub fn to_xonly_pubkey(verifying_key: &frost::VerifyingKey) -> XOnlyPublicKey {
 }
 
 fn sign(
-    key_packages: HashMap<frost::Identifier, frost::keys::KeyPackage>,
-    pubkey_package: frost::keys::PublicKeyPackage,
-) -> Result<(), frost::Error> {
+    key_packages: &HashMap<frost::Identifier, frost::keys::KeyPackage>,
+    pubkey_package: &frost::keys::PublicKeyPackage,
+    message: &[u8]
+) -> Result<Signature, frost::Error> {
     let rng = &mut thread_rng();
     let min_signers = 3;
 
@@ -275,7 +280,6 @@ fn sign(
     // - decide what message to sign
     // - take one (unused) commitment per signing participant
     let mut signature_shares = BTreeMap::new();
-    let message = "message to sign".as_bytes();
     let signing_package = frost::SigningPackage::new(commitments_map, message);
 
     ////////////////////////////////////////////////////////////////////////////
@@ -312,8 +316,49 @@ fn sign(
         .is_ok();
     assert!(is_signature_valid);
 
-    Ok(())
+    Ok(group_signature)
 }
+
+pub fn sign_transaction_frost(
+    key_packages: &HashMap<frost::Identifier, frost::keys::KeyPackage>,
+    pubkey_package: &frost::keys::PublicKeyPackage,
+    tx: &Transaction,
+    prevouts: &[TxOut],
+) -> secp256k1::schnorr::Signature {
+    // key
+    let secp = &secp256k1::Secp256k1::new();
+
+    // the first input is the taproot UTXO we want to spend
+    let tx_ind = 0;
+
+    // the sighash flag is always ALL
+    let hash_ty = TapSighashType::All;
+
+    // sighash
+    let mut cache = SighashCache::new(tx);
+    let mut sig_msg = Vec::new();
+    cache
+        .taproot_encode_signing_data_to(
+            &mut sig_msg,
+            tx_ind,
+            &Prevouts::All(prevouts),
+            None,
+            None,
+            hash_ty,
+        )
+        .unwrap();
+    let sighash = cache
+        .taproot_signature_hash(tx_ind, &Prevouts::All(prevouts), None, None, hash_ty)
+        .unwrap();
+    let msg = secp256k1::Message::from_digest(sighash.to_byte_array());
+
+    // secp.sign_schnorr_with_aux_rand(&msg, &tweaked_keypair, &[0u8; 32])
+
+    let serialized_sig = sign(key_packages, pubkey_package, msg.as_ref()).unwrap().serialize();
+
+    secp256k1::schnorr::Signature::from_slice(serialized_sig.as_slice()).unwrap()
+}
+
 
 #[cfg(test)]
 mod tests {
@@ -368,6 +413,7 @@ mod tests {
     fn test_flow() {
         let (key_packages, pubkey_package) = gen_frost_keys(5, 3).unwrap();
 
-        sign(key_packages, pubkey_package).unwrap();
+        let message = "message to sign".as_bytes();
+        sign(&key_packages, &pubkey_package, message).unwrap();
     }
 }

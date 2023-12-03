@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::str::FromStr;
 
 use bitcoin::{
@@ -114,16 +115,17 @@ async fn send_to_p2tr_pubkey(
     secp: &Secp256k1<All>,
     xonly_pubkey: XOnlyPublicKey,
     amount: u64,
-) -> Txid {
+) -> (Txid, TxOut) {
     // create empty transaction that sends to a p2tr from our wallet
+    let tx_out = TxOut {
+        value: Amount::from_sat(amount),
+        script_pubkey: ScriptBuf::new_p2tr(secp, xonly_pubkey, None),
+    };
     let tx = Transaction {
         version: Version::TWO,
         lock_time: LockTime::ZERO, // no lock time
         input: vec![],
-        output: vec![TxOut {
-            value: Amount::from_sat(amount),
-            script_pubkey: ScriptBuf::new_p2tr(secp, xonly_pubkey, None),
-        }],
+        output: vec![tx_out.clone()],
     };
 
     // fund that transaction with our wallet
@@ -140,7 +142,9 @@ async fn send_to_p2tr_pubkey(
     let txid = send_raw_transaction(&ctx, TransactionOrHex::Hex(tx_hex))
         .await
         .unwrap();
-    txid
+
+    // return the tx id and the output created for the P2TR pubkey
+    (txid, tx_out)
 }
 
 #[cfg(test)]
@@ -158,7 +162,7 @@ mod tests {
             fund_raw_transaction, send_raw_transaction, sign_transaction, TransactionOrHex,
         },
     };
-    use crate::frost::{gen_frost_keys, to_xonly_pubkey};
+    use crate::frost::{gen_frost_keys, sign_transaction_frost, to_xonly_pubkey};
 
     use super::*;
     /*
@@ -204,13 +208,13 @@ mod tests {
         //        let sig = sign_transaction_schnorr(&sk, &tx, &prevouts);
         //        println!("{sig:?}");
         let ctx = RpcCtx::for_testing();
-        let txid = send_to_p2tr_pubkey(&ctx, &secp, xonly_pubkey, amount).await;
+        let (txid, _tx_out) = send_to_p2tr_pubkey(&ctx, &secp, xonly_pubkey, amount).await;
 
         println!("- txid: {txid}");
     }
 
     #[tokio::test]
-    #[ignore = "I used this to send a p2tr transaction on the network to a known private key"]
+    #[ignore = "This creates 2 transactions: 1) send to the frost pubkey, 2) spend from the frost (signed by all frost participants)"]
     async fn test_send_and_spend_with_frost() {
         // let's create a keypair and expose the privkey and pubkey
         let secp = secp256k1::Secp256k1::default();
@@ -231,9 +235,53 @@ mod tests {
         //        let sig = sign_transaction_schnorr(&sk, &tx, &prevouts);
         //        println!("{sig:?}");
         let ctx = RpcCtx::for_testing();
-        let txid = send_to_p2tr_pubkey(&ctx, &secp, xonly_pubkey, amount).await;
+        let (txid, tx_out) = send_to_p2tr_pubkey(&ctx, &secp, xonly_pubkey, amount).await;
 
         println!("- txid: {txid}");
+
+        // Spend this fucker now
+        let vout = 0;
+        let satoshi_amount = amount;
+
+        let bob_address = Address::from_str(ZKBITCOIN_ADDRESS)
+            .unwrap()
+            .require_network(Network::Testnet)
+            .unwrap();
+
+        let fee_bitcoin_sat = 400;
+        let fee_zkbitcoin_sat = 100;
+        let mut tx = create_transaction(
+            (txid, vout),
+            satoshi_amount,
+            bob_address,
+            fee_bitcoin_sat,
+            fee_zkbitcoin_sat,
+        );
+
+        // prevouts
+        let prevouts = vec![tx_out.clone()];
+
+        // sign
+        let sk = secp256k1::SecretKey::from_str(
+            "b2f7f581d6de3c06a822fd6e7e8265fbc00f8401696a5bdc34f5a6d2ff3f922f",
+        )
+            .unwrap();
+        let sig = sign_transaction_frost(&key_packages, &pubkey_package, &tx, &[tx_out]);
+
+        // place signature in witness
+        let hash_ty = TapSighashType::All;
+        let final_signature = taproot::Signature { sig, hash_ty };
+        let mut witness = Witness::new();
+        witness.push(final_signature.to_vec());
+        tx.input[0].witness = witness;
+
+        println!("{tx:#?}");
+
+        // broadcast transaction
+        let ctx = RpcCtx::for_testing();
+        let _txid = send_raw_transaction(&ctx, TransactionOrHex::Transaction(&tx))
+            .await
+            .unwrap();
     }
 
     #[tokio::test]

@@ -81,8 +81,8 @@ pub struct SmartContract {
 }
 
 /// Extracts smart contract information as a [SmartContract] from a transaction.
-pub fn parse_transaction(raw_tx: &Transaction) -> Result<SmartContract, &'static str> {
-    let zkbitcoin_pubkey: PublicKey = PublicKey::from_str(ZKBITCOIN_PUBKEY).unwrap();
+pub fn parse_transaction(raw_tx: &Transaction, zkbitcoin_pubkey: &PublicKey) -> Result<SmartContract, &'static str> {
+    let zkbitcoin_pubkey = zkbitcoin_pubkey.to_owned();
 
     // ensure that the first or second output is to 0xzkBitcoin and extract amount
     let mut vout_of_zkbitcoin_utxo = 0;
@@ -173,7 +173,8 @@ pub async fn fetch_smart_contract(
     }
 
     // parse transaction
-    parse_transaction(&transaction)
+    let zkbitcoin_pubkey: PublicKey = PublicKey::from_str(ZKBITCOIN_PUBKEY).unwrap();
+    parse_transaction(&transaction, &zkbitcoin_pubkey)
 }
 
 /// Validates a request received from Bob.
