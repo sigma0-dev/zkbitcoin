@@ -1,9 +1,11 @@
 use std::collections::{BTreeMap, HashMap};
 
+use bitcoin::{taproot, TapSighashType, Txid, Witness};
+
 use crate::{
     bob_request::{validate_request, BobRequest, BobResponse},
     constants::{FEE_BITCOIN_SAT, FEE_ZKBITCOIN_SAT},
-    json_rpc_stuff::{json_rpc_request, RpcCtx},
+    json_rpc_stuff::{json_rpc_request, send_raw_transaction, RpcCtx, TransactionOrHex},
     mpc_sign_tx::create_transaction,
 };
 
@@ -40,10 +42,14 @@ impl Orchestrator {
         }
     }
 
-    pub async fn produce_transaction_and_mpc_signature(
-        &self,
-        bob_request: BobRequest,
-    ) -> Result<frost_secp256k1::Signature, &'static str> {
+    /// Handles bob request from A to Z.
+    pub async fn handle_request(&self, bob_request: BobRequest) -> Result<Txid, &'static str> {
+        //
+        // Validate transaction before forwarding it, and get smart contract
+        //
+
+        let smart_contract = validate_request(&self.bitcoin_rpc_ctx, &bob_request, None).await?;
+
         //
         // Round 1
         //
@@ -121,18 +127,12 @@ impl Orchestrator {
         }
 
         //
-        // Validate transaction before forwarding it, and get smart contract
-        //
-
-        let smart_contract = validate_request(&self.bitcoin_rpc_ctx, &bob_request, None).await?;
-
-        //
         // Produce transaction and digest
         //
 
         let bob_address = bob_request.get_bob_address()?;
         let utxo = (bob_request.txid, smart_contract.vout_of_zkbitcoin_utxo);
-        let transaction = create_transaction(
+        let mut transaction = create_transaction(
             utxo,
             smart_contract.locked_value,
             bob_address,
@@ -150,6 +150,28 @@ impl Orchestrator {
             frost_secp256k1::aggregate(&signing_package, &signature_shares, &self.pubkey_package)
                 .map_err(|_| "failed to aggregate signatures")?;
 
-        Ok(group_signature)
+        //
+        // Include signature in the witness of the transaction
+        //
+
+        let sig = todo!(); // TODO: convert group_signature
+
+        let hash_ty = TapSighashType::All;
+        let final_signature = taproot::Signature { sig, hash_ty };
+        let mut witness = Witness::new();
+        witness.push(final_signature.to_vec());
+        transaction.input[0].witness = witness; // TODO: is it always the first input?
+
+        //
+        // Broadcast transaction
+        //
+
+        let txid = send_raw_transaction(
+            &self.bitcoin_rpc_ctx,
+            TransactionOrHex::Transaction(&transaction),
+        )
+        .await?;
+
+        Ok(txid)
     }
 }
