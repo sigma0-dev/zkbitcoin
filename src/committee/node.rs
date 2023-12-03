@@ -75,8 +75,8 @@ async fn round_2_signing(params: Params<'static>, context: Arc<Ctx>) -> RpcResul
     println!("received request: {:?}", bob_request);
 
     // TODO: signing package should be recreated no? as we want to ensure that we agree on what is being signed (should be a deterministic process).
-    let signing_package = frost_secp256k1::SigningPackage::new(commitments_map, message);
-    let signature_share = frost_secp256k1::round2::sign(&signing_package, nonces, key_package)?;
+    // let signing_package = frost_secp256k1::SigningPackage::new(commitments_map, message);
+    // let signature_share = frost_secp256k1::round2::sign(&signing_package, nonces, key_package)?;
 
     // TODO: return signature shares
     Ok(())
