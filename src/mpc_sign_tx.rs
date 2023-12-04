@@ -261,8 +261,10 @@ mod tests {
         let min_signers = 3;
 
         let (key_packages, pubkey_package) = gen_frost_keys(max_signers, min_signers).unwrap();
+        println!("- FROST pubkey: {:#?}", pubkey_package.verifying_key());
 
         let pubkey = to_xonly_pubkey(pubkey_package.verifying_key());
+        println!("- XOnly pubkey: {:#?}", pubkey);
 
         let xonly_pubkey = UntweakedPublicKey::from(pubkey);
         //        let tweaked = untweaked.add_tweak(&secp, &secp256k1::Scalar::ONE);
@@ -297,14 +299,10 @@ mod tests {
         );
 
         // prevouts
-        let prevouts = vec![tx_out.clone()];
+        let prevouts = &[tx_out];
 
         // sign
-        let sk = secp256k1::SecretKey::from_str(
-            "b2f7f581d6de3c06a822fd6e7e8265fbc00f8401696a5bdc34f5a6d2ff3f922f",
-        )
-        .unwrap();
-        let sig = sign_transaction_frost(&key_packages, &pubkey_package, &tx, &[tx_out]);
+        let sig = sign_transaction_frost(&key_packages, &pubkey_package, &tx, prevouts);
 
         // place signature in witness
         let hash_ty = TapSighashType::All;
