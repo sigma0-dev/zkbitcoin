@@ -4,11 +4,15 @@ use std::{
     str::FromStr,
 };
 
-use bitcoin::{Address, Amount, PublicKey, Transaction, TxOut};
+use anyhow::{bail, ensure, Context, Result};
+use bitcoin::{
+    opcodes::all::OP_RETURN, script::Instruction, Address, Amount, PublicKey, Transaction,
+};
 use serde::{Deserialize, Serialize};
 use tempdir::TempDir;
 
 use crate::{
+    alice_sign_tx::p2tr_script_to,
     constants::{MINIMUM_CONFIRMATIONS, ZKBITCOIN_PUBKEY},
     get_network,
     json_rpc_stuff::json_rpc_request,
@@ -37,15 +41,15 @@ pub struct BobRequest {
 
 impl BobRequest {
     // TODO: does an address fit in a public element?
-    pub fn get_bob_address(&self) -> Result<Address, &'static str> {
+    pub fn get_bob_address(&self) -> Result<Address> {
         if self.public_inputs.len() < 1 {
-            return Err("public input should at least be of size 1 (as first public input is bob's address)");
+            bail!("public input should at least be of size 1 (as first public input is bob's address)");
         }
 
         let address_str = &self.public_inputs[0];
         let bob_address = bitcoin::Address::from_str(address_str)
-            .map_err(|_| "failed to deserialize the first public input as a bitcoin address")?;
-        let bob_address = bob_address.require_network(get_network()).map_err(|_| {
+            .context("failed to deserialize the first public input as a bitcoin address")?;
+        let bob_address = bob_address.require_network(get_network()).context({
             "network of bitcoin address needs to be testnet or bitcoin (depending on cfg)"
         })?;
 
@@ -59,10 +63,7 @@ pub struct BobResponse {
     pub commitments: frost_secp256k1::round1::SigningCommitments,
 }
 
-pub async fn send_bob_request(
-    address: &str,
-    request: BobRequest,
-) -> Result<BobResponse, &'static str> {
+pub async fn send_bob_request(address: &str, request: BobRequest) -> Result<BobResponse> {
     let ctx = RpcCtx {
         version: Some("2.0"),
         wallet: None,
@@ -76,14 +77,12 @@ pub async fn send_bob_request(
         &[serde_json::value::to_raw_value(&request).unwrap()],
     )
     .await
-    .map_err(|e| {
-        println!("error: {e}");
-        "unlock_funds error"
-    })?;
+    .context("couldn't send unlock_funds request to orchestrator")?;
 
     // TODO: get rid of unwrap in here
-    let response: bitcoincore_rpc::jsonrpc::Response = serde_json::from_str(&resp).unwrap();
-    let bob_response: BobResponse = response.result().unwrap();
+    let response: bitcoincore_rpc::jsonrpc::Response =
+        serde_json::from_str(&resp).context("couldn't deserialize orchestrator's response")?;
+    let bob_response: BobResponse = response.result().context("bob request failed")?;
 
     Ok(bob_response)
 }
@@ -105,23 +104,57 @@ pub struct SmartContract {
     pub prev_outs: Vec<bitcoin::TxOut>,
 }
 
+pub fn parse_op_return_data(script: &bitcoin::ScriptBuf) -> Result<Vec<u8>> {
+    // we expect [OP_RETURN, OP_PUSHBYTES]
+    // anything else we won't accept
+    let mut instructions = script.instructions();
+    let inst = instructions
+        .next()
+        .expect("caller should have checked that this is an OP_RETURN")
+        .expect("not sure why there are two layers of result")
+        .opcode()
+        .expect("come on");
+    assert_eq!(
+        inst, OP_RETURN,
+        "caller should have checked that this is an OP_RETURN"
+    );
+
+    let inst = instructions
+        .next()
+        .context("no data was pushed as the last instruction of the script")?;
+
+    let res = if let Ok(Instruction::PushBytes(bytes)) = inst {
+        bytes.as_bytes().to_vec()
+    } else {
+        bail!("last instruction of the script was not a pushdata");
+    };
+
+    ensure!(
+        instructions.next().is_none(),
+        "we only expect one pushdata in an OP_RETURN"
+    );
+
+    Ok(res)
+}
+
 /// Extracts smart contract information as a [SmartContract] from a transaction.
-pub fn parse_transaction(
+pub fn extract_smart_contract_from_tx(
     raw_tx: &Transaction,
     zkbitcoin_pubkey: &PublicKey,
-) -> Result<SmartContract, &'static str> {
+) -> Result<SmartContract> {
     let zkbitcoin_pubkey = zkbitcoin_pubkey.to_owned();
 
     // ensure that the first or second output is to 0xzkBitcoin and extract amount
+    let expected_script = p2tr_script_to(zkbitcoin_pubkey);
     let mut vout_of_zkbitcoin_utxo = 0;
     let mut outputs = raw_tx.output.iter();
     let locked_value = {
-        let output = outputs.next().ok_or("tx has no output")?;
-        if output.script_pubkey.as_script().p2pk_public_key() != Some(zkbitcoin_pubkey) {
+        let output = outputs.next().context("tx has no output")?;
+        if output.script_pubkey != expected_script {
             // the first output must have been the change, moving on to the second output
-            let output = outputs.next().ok_or("tx has no output")?;
-            if output.script_pubkey.as_script().p2pk_public_key() != Some(zkbitcoin_pubkey) {
-                return Err("Transaction's first or second output must be for 0xzkBitcoin");
+            let output = outputs.next().context("tx has no output")?;
+            if output.script_pubkey != expected_script {
+                bail!("Transaction's first or second output must be for 0xzkBitcoin");
             }
             vout_of_zkbitcoin_utxo = 1;
             output.value
@@ -134,23 +167,30 @@ pub fn parse_transaction(
     let mut op_return_outputs = vec![];
     for output in outputs {
         if output.script_pubkey.is_op_return() {
-            let unlock_script = output.script_pubkey.as_bytes();
-            let data = unlock_script[1..].to_vec();
+            let data = parse_op_return_data(&output.script_pubkey)?;
+            println!(
+                "- extracted {data:?} from OP_RETURN {:?}",
+                output.script_pubkey.as_script()
+            );
             op_return_outputs.push(data);
         }
     }
 
     // ensure that the list at least contains the VK hash
     // other elements in the list are presumed to contain public inputs
-    if op_return_outputs.is_empty() {
-        return Err("Transaction has no OP_RETURN outputs");
-    }
+    ensure!(
+        !op_return_outputs.is_empty(),
+        "Transaction has no OP_RETURN outputs"
+    );
 
     // TODO: extract validate the vk hash against the given vk
     let vk_hash = op_return_outputs[0].clone();
-    let vk_hash: [u8; 32] = vk_hash
-        .try_into()
-        .map_err(|_| "first OP_RETURN data is not a 32-byte vk hash")?;
+    println!("- first op_return is vk hash: {:?}", vk_hash);
+    ensure!(
+        vk_hash.len() == 32,
+        "first OP_RETURN data is not a 32-byte vk hash"
+    );
+    let vk_hash: [u8; 32] = vk_hash.try_into().unwrap();
 
     let public_inputs = op_return_outputs[1..].to_vec();
 
@@ -165,10 +205,7 @@ pub fn parse_transaction(
 }
 
 /// Fetch the smart contract on-chain from the txid.
-pub async fn fetch_smart_contract(
-    ctx: &RpcCtx,
-    txid: bitcoin::Txid,
-) -> Result<SmartContract, &'static str> {
+pub async fn fetch_smart_contract(ctx: &RpcCtx, txid: bitcoin::Txid) -> Result<SmartContract> {
     // fetch transaction + metadata based on txid
     let (transaction, confirmations) = {
         println!("- fetching txid {txid}", txid = txid);
@@ -182,7 +219,7 @@ pub async fn fetch_smart_contract(
             ],
         )
         .await
-        .map_err(|_| "gettransaction error")?;
+        .context("gettransaction error")?;
 
         // TODO: get rid of unwrap in here
         let response: bitcoincore_rpc::jsonrpc::Response = serde_json::from_str(&response).unwrap();
@@ -197,13 +234,14 @@ pub async fn fetch_smart_contract(
     };
 
     // enforce that the smart contract was confirmed
-    if confirmations < MINIMUM_CONFIRMATIONS {
-        return Err("Smart contract has not been confirmed yet");
-    }
+    ensure!(
+        confirmations >= MINIMUM_CONFIRMATIONS,
+        "Smart contract has not been confirmed yet"
+    );
 
     // parse transaction
     let zkbitcoin_pubkey: PublicKey = PublicKey::from_str(ZKBITCOIN_PUBKEY).unwrap();
-    parse_transaction(&transaction, &zkbitcoin_pubkey)
+    extract_smart_contract_from_tx(&transaction, &zkbitcoin_pubkey)
 }
 
 /// Validates a request received from Bob.
@@ -211,7 +249,7 @@ pub async fn validate_request(
     ctx: &RpcCtx,
     request: &BobRequest,
     smart_contract: Option<SmartContract>,
-) -> Result<SmartContract, &'static str> {
+) -> Result<SmartContract> {
     // fetch the smart contract if not given
     let smart_contract = if let Some(x) = smart_contract {
         x
@@ -220,19 +258,19 @@ pub async fn validate_request(
     };
 
     // ensure that the vk makes sense with public input that are fixed
-    if smart_contract.public_inputs.len() > request.vk.nPublic {
-        return Err("number of public inputs that are fixed is greater than the number of public inputs in the vk");
-    }
+    ensure!(smart_contract.public_inputs.len() <= request.vk.nPublic,"number of public inputs that are fixed is greater than the number of public inputs in the vk");
 
     // ensure that number public inputs <= vk.num_public_inputs
-    if request.vk.nPublic != request.public_inputs.len() {
-        return Err("number of public input don't match");
-    }
+    ensure!(
+        request.vk.nPublic == request.public_inputs.len(),
+        "number of public input don't match"
+    );
 
     // ensure that the hash of the VK correctly gives us the vk_hash
-    if smart_contract.vk_hash[..] != request.vk.hash() {
-        return Err("VK does not match the VK hash in the smart contract");
-    }
+    ensure!(
+        smart_contract.vk_hash[..] == request.vk.hash(),
+        "VK does not match the VK hash in the smart contract"
+    );
 
     // ensure that the public input (prefix) matches what's on chain
     // any other public input is decided by Bob (the prover)
@@ -241,9 +279,9 @@ pub async fn validate_request(
         .iter()
         .zip(&request.public_inputs)
     {
-        if pi1 != pi2.as_bytes() {
-            return Err("public inputs don't match");
-        }
+        println!("pi1: {:?}", pi1);
+        println!("pi2: {:?}", pi2);
+        ensure!(pi1 == pi2.as_bytes(), "public inputs don't match");
     }
 
     // write vk, inputs, proof to file
@@ -275,7 +313,7 @@ pub async fn validate_request(
     println!("{}", String::from_utf8_lossy(&output.stdout));
 
     if !output.status.success() {
-        return Err("failed to verify proof");
+        bail!("failed to verify proof");
     }
 
     // clean up

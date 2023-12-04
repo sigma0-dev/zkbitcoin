@@ -4,6 +4,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
+use anyhow::Error;
 use bitcoin::Txid;
 use jsonrpsee::{
     server::{RpcModule, Server},
@@ -109,8 +110,8 @@ async fn round_1_signing(
             Err(err) => {
                 return RpcResult::Err(ErrorObjectOwned::owned(
                     jsonrpsee_types::error::UNKNOWN_ERROR_CODE,
-                    err,
-                    Some(format!("the request didn't validate: {err}")),
+                    "the request didn't validate",
+                    Some(format!("{err}")),
                 ))
             }
         };
@@ -229,7 +230,7 @@ pub async fn run_server(
     pubkey_package: frost::PublicKeyPackage,
 ) -> anyhow::Result<SocketAddr> {
     let address = address.unwrap_or("127.0.0.1:6666");
-    println!("- starting server at address http://{address}");
+    println!("- starting node at address http://{address}");
 
     let ctx = NodeState {
         bitcoin_rpc_ctx: ctx,

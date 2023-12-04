@@ -4,6 +4,7 @@ use std::{
     sync::Arc,
 };
 
+use anyhow::{Context, Result};
 use bitcoin::{taproot, TapSighashType, Txid, Witness};
 use jsonrpsee::{server::Server, RpcModule};
 use jsonrpsee_core::RpcResult;
@@ -56,7 +57,7 @@ impl Orchestrator {
     }
 
     /// Handles bob request from A to Z.
-    pub async fn handle_request(&self, bob_request: &BobRequest) -> Result<Txid, &'static str> {
+    pub async fn handle_request(&self, bob_request: &BobRequest) -> Result<Txid> {
         //
         // Validate transaction before forwarding it, and get smart contract
         //
@@ -91,10 +92,7 @@ impl Orchestrator {
                 &[serde_json::value::to_raw_value(&bob_request).unwrap()],
             )
             .await
-            .map_err(|e| {
-                println!("error: {e}");
-                "unlock_funds error"
-            })?;
+            .context("unlock_funds error")?;
 
             let response: bitcoincore_rpc::jsonrpc::Response = serde_json::from_str(&resp).unwrap();
             let bob_response: BobResponse = response.result().unwrap();
@@ -137,10 +135,7 @@ impl Orchestrator {
                 &[serde_json::value::to_raw_value(&round2_request).unwrap()],
             )
             .await
-            .map_err(|e| {
-                println!("error: {e}");
-                "unlock_funds error"
-            })?;
+            .context("unlock_funds error")?;
 
             let response: bitcoincore_rpc::jsonrpc::Response = serde_json::from_str(&resp).unwrap();
             let round2_response: Round2Response = response.result().unwrap();
@@ -171,7 +166,7 @@ impl Orchestrator {
         let signing_package = frost_secp256k1::SigningPackage::new(commitments_map, &message);
         let group_signature =
             frost_secp256k1::aggregate(&signing_package, &signature_shares, &self.pubkey_package)
-                .map_err(|_| "failed to aggregate signatures")?;
+                .context("failed to aggregate signatures")?;
 
         //
         // Include signature in the witness of the transaction
@@ -179,7 +174,7 @@ impl Orchestrator {
         let serialized = group_signature.serialize();
         println!("serialized: {:?}", serialized);
         let sig = secp256k1::schnorr::Signature::from_slice(&serialized)
-            .map_err(|_| "couldn't convert signature type")?;
+            .context("couldn't convert signature type")?;
 
         let hash_ty = TapSighashType::All;
         let final_signature = taproot::Signature { sig, hash_ty };
@@ -228,9 +223,9 @@ pub async fn run_server(
     ctx: RpcCtx,
     pubkey_package: frost::PublicKeyPackage,
     committee_cfg: CommitteeConfig,
-) -> anyhow::Result<SocketAddr> {
+) -> Result<SocketAddr> {
     let address = address.unwrap_or("127.0.0.1:6666");
-    println!("- starting server at address http://{address}");
+    println!("- starting orchestrator at address http://{address}");
 
     let ctx = Orchestrator {
         bitcoin_rpc_ctx: ctx,

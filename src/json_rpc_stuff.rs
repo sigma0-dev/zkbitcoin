@@ -2,6 +2,7 @@
 //! It heavily relies on the jsonrpc and bitcoincore_rpc crates (and its dependencies).
 //! It does not directly make use of these crates due to some issues (loss of information when getting 500 errors from bitcoind).
 
+use anyhow::{Context, Result};
 use base64::{engine::general_purpose, Engine};
 use bitcoin::{Transaction, Txid};
 use reqwest::{
@@ -163,7 +164,7 @@ pub enum TransactionOrHex<'a> {
 pub async fn fund_raw_transaction<'a>(
     ctx: &RpcCtx,
     tx: TransactionOrHex<'a>,
-) -> Result<(String, Transaction), &'static str> {
+) -> Result<(String, Transaction)> {
     let tx_hex = match tx {
         TransactionOrHex::Hex(hex) => hex,
         TransactionOrHex::Transaction(tx) => bitcoin::consensus::encode::serialize_hex(tx),
@@ -175,7 +176,7 @@ pub async fn fund_raw_transaction<'a>(
         &[serde_json::value::to_raw_value(&serde_json::Value::String(tx_hex)).unwrap()],
     )
     .await
-    .map_err(|_| "fundrawtransaction error")?;
+    .context("fundrawtransaction error")?;
 
     // TODO: get rid of unwrap in here
     let response: bitcoincore_rpc::jsonrpc::Response = serde_json::from_str(&response).unwrap();
@@ -191,7 +192,7 @@ pub async fn fund_raw_transaction<'a>(
 pub async fn sign_transaction<'a>(
     ctx: &RpcCtx,
     tx: TransactionOrHex<'a>,
-) -> Result<(String, Transaction), &'static str> {
+) -> Result<(String, Transaction)> {
     let tx_hex = match tx {
         TransactionOrHex::Hex(hex) => hex,
         TransactionOrHex::Transaction(tx) => bitcoin::consensus::encode::serialize_hex(tx),
@@ -203,7 +204,7 @@ pub async fn sign_transaction<'a>(
         &[serde_json::value::to_raw_value(&serde_json::Value::String(tx_hex)).unwrap()],
     )
     .await
-    .map_err(|_| "signrawtransactionwithwallet error")?;
+    .context("signrawtransactionwithwallet error")?;
 
     // TODO: get rid of unwrap in here
     let response: bitcoincore_rpc::jsonrpc::Response = serde_json::from_str(&response).unwrap();
@@ -216,10 +217,7 @@ pub async fn sign_transaction<'a>(
     Ok((actual_hex, tx))
 }
 
-pub async fn send_raw_transaction<'a>(
-    ctx: &RpcCtx,
-    tx: TransactionOrHex<'a>,
-) -> Result<Txid, &'static str> {
+pub async fn send_raw_transaction<'a>(ctx: &RpcCtx, tx: TransactionOrHex<'a>) -> Result<Txid> {
     let tx_hex = match tx {
         TransactionOrHex::Hex(hex) => hex,
         TransactionOrHex::Transaction(tx) => bitcoin::consensus::encode::serialize_hex(tx),
@@ -231,7 +229,7 @@ pub async fn send_raw_transaction<'a>(
         &[serde_json::value::to_raw_value(&serde_json::Value::String(tx_hex)).unwrap()],
     )
     .await
-    .map_err(|_| "sendrawtransaction error")?;
+    .context("sendrawtransaction error")?;
 
     // TODO: get rid of unwrap in here
     let response: bitcoincore_rpc::jsonrpc::Response = serde_json::from_str(&response).unwrap();

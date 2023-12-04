@@ -1,5 +1,6 @@
 use std::str::FromStr;
 
+use anyhow::{Context, Result};
 use bitcoin::key::UntweakedPublicKey;
 use bitcoin::{
     absolute::LockTime, transaction::Version, Amount, PublicKey, ScriptBuf, Transaction, TxOut,
@@ -10,6 +11,12 @@ use crate::json_rpc_stuff::{
     fund_raw_transaction, send_raw_transaction, sign_transaction, RpcCtx, TransactionOrHex,
 };
 
+pub fn p2tr_script_to(zkbitcoin_pubkey: PublicKey) -> ScriptBuf {
+    let secp = secp256k1::Secp256k1::default();
+    let internal_key = UntweakedPublicKey::from(zkbitcoin_pubkey);
+    ScriptBuf::new_p2tr(&secp, internal_key, None)
+}
+
 /// Generates and broadcasts a transaction to the network.
 /// Specifically, this sends a transaction to 0xzkBitcoin, for some given amount in satoshis,
 /// and authenticates the verifier key `vk` that can unlock the founds.
@@ -18,7 +25,7 @@ pub async fn generate_and_broadcast_transaction(
     vk_hash: &[u8; 32],
     public_inputs: Vec<String>,
     satoshi_amount: u64,
-) -> Result<bitcoin::Txid, &'static str> {
+) -> Result<bitcoin::Txid> {
     // 1. create transaction based on VK + amount
     // https://developer.bitcoin.org/reference/rpc/createrawtransaction.html
     //
@@ -26,23 +33,11 @@ pub async fn generate_and_broadcast_transaction(
         let mut outputs = vec![];
         // first output is a P2PK to 0xzkBitcoin
         let zkbitcoin_pubkey: PublicKey = PublicKey::from_str(ZKBITCOIN_PUBKEY).unwrap();
-        let tx_out = if false {
-            // P2PK
-            TxOut {
-                value: Amount::from_sat(satoshi_amount),
-                script_pubkey: ScriptBuf::new_p2pk(&zkbitcoin_pubkey),
-            }
-        } else {
-            // P2TR
-            let secp = secp256k1::Secp256k1::default();
-            let internal_key = UntweakedPublicKey::from(zkbitcoin_pubkey);
-            let pubkey = ScriptBuf::new_p2tr(&secp, internal_key, None);
-            TxOut {
-                value: Amount::from_sat(satoshi_amount),
-                script_pubkey: pubkey,
-            }
-        };
-        outputs.push(tx_out);
+        outputs.push(TxOut {
+            value: Amount::from_sat(satoshi_amount),
+            script_pubkey: p2tr_script_to(zkbitcoin_pubkey),
+        });
+
         // second output is VK
         {
             let script_pubkey = ScriptBuf::new_op_return(vk_hash);
