@@ -162,10 +162,10 @@ async fn round_2_signing(
     let round2request = &round2request[0];
     println!("received request: {:?}", round2request);
 
-    // retrieve metadata for this task
+    // retrieve metadata for this task (and prune it)
     let (bob_address, smart_contract, nonces) = {
-        let signing_tasks = context.signing_tasks.read().unwrap();
-        if let Some(local_signing_task) = signing_tasks.get(&round2request.txid) {
+        let mut signing_tasks = context.signing_tasks.write().unwrap();
+        if let Some(local_signing_task) = signing_tasks.remove(&round2request.txid) {
             if local_signing_task.proof_hash != round2request.proof_hash {
                 return RpcResult::Err(ErrorObjectOwned::owned(
                     jsonrpsee_types::error::UNKNOWN_ERROR_CODE,
