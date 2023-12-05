@@ -1,11 +1,15 @@
 use std::{
     collections::{BTreeMap, HashMap},
     net::SocketAddr,
+    str::FromStr,
     sync::Arc,
 };
 
 use anyhow::{Context, Result};
-use bitcoin::{taproot, TapSighashType, Txid, Witness};
+use bitcoin::{
+    key::{TapTweak, UntweakedPublicKey},
+    secp256k1, taproot, TapSighashType, Txid, Witness,
+};
 use itertools::Itertools;
 use jsonrpsee::{server::Server, RpcModule};
 use jsonrpsee_core::RpcResult;
@@ -14,7 +18,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     bob_request::{validate_request, BobRequest, BobResponse},
-    constants::{FEE_BITCOIN_SAT, FEE_ZKBITCOIN_SAT},
+    constants::{FEE_BITCOIN_SAT, FEE_ZKBITCOIN_SAT, ZKBITCOIN_PUBKEY},
     frost,
     json_rpc_stuff::{json_rpc_request, send_raw_transaction, RpcCtx, TransactionOrHex},
     mpc_sign_tx::{create_transaction, get_digest_to_hash},
@@ -167,6 +171,7 @@ impl Orchestrator {
         // Aggregate signatures
         //
 
+        println!("- aggregate signature shares");
         let signing_package = frost_secp256k1_tr::SigningPackage::new(commitments_map, &message);
         let group_signature = frost_secp256k1_tr::aggregate(
             &signing_package,
@@ -175,11 +180,40 @@ impl Orchestrator {
         )
         .context("failed to aggregate signatures")?;
 
+        #[cfg(debug_assertions)]
+        {
+            // verify using FROST
+            let group_pubkey = self.pubkey_package.verifying_key();
+            assert!(group_pubkey.verify(&message, &group_signature).is_ok());
+            println!("- the signature verified locally with FROST lib");
+
+            // assert that the pubkey is the same
+            let deserialized_pubkey =
+                bitcoin::PublicKey::from_slice(&group_pubkey.serialize()).unwrap();
+            let zkbitcoin_pubkey: bitcoin::PublicKey =
+                bitcoin::PublicKey::from_str(ZKBITCOIN_PUBKEY).unwrap();
+            assert_eq!(deserialized_pubkey, zkbitcoin_pubkey);
+
+            // verify using bitcoin lib
+            let sig = secp256k1::schnorr::Signature::from_slice(&group_signature.serialize()[1..])
+                .unwrap();
+            let zkbitcoin_pubkey: bitcoin::PublicKey =
+                bitcoin::PublicKey::from_str(ZKBITCOIN_PUBKEY).unwrap();
+            let internal_key = UntweakedPublicKey::from(zkbitcoin_pubkey);
+            let secp = secp256k1::Secp256k1::default();
+            let (tweaked, _) = internal_key.tap_tweak(&secp, None);
+            let msg = secp256k1::Message::from_digest(message);
+            assert!(secp.verify_schnorr(&sig, &msg, &tweaked.into()).is_ok());
+            println!("- the signature verified locally with bitcoin lib");
+        }
+
         //
         // Include signature in the witness of the transaction
         //
+
+        println!("- include signature in witness of transaction");
         let serialized = group_signature.serialize();
-        println!("serialized: {:?}", serialized);
+        println!("- serialized: {:?}", serialized);
         let sig = secp256k1::schnorr::Signature::from_slice(&serialized[1..])
             .context("couldn't convert signature type")?;
 
@@ -193,6 +227,7 @@ impl Orchestrator {
         // Broadcast transaction
         //
 
+        println!("- attempting to broadcast transaction");
         let txid = send_raw_transaction(
             &self.bitcoin_rpc_ctx,
             TransactionOrHex::Transaction(&transaction),

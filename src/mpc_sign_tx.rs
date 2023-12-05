@@ -12,6 +12,7 @@ use bitcoin::{
 use secp256k1::{hashes::Hash, All, Secp256k1, XOnlyPublicKey};
 
 use crate::{
+    alice_sign_tx::p2tr_script_to,
     bob_request::SmartContract,
     json_rpc_stuff::{
         fund_raw_transaction, send_raw_transaction, sign_transaction, TransactionOrHex,
@@ -30,35 +31,16 @@ pub fn get_digest_to_hash(
     // sighash
     let mut cache = SighashCache::new(transaction);
     let mut sig_msg = Vec::new();
-    println!("{:?}", smart_contract.vout_of_zkbitcoin_utxo);
-    println!("{:?}", smart_contract.prev_outs);
-    // TODO: only keep track of one prev_outs in the smart contract
 
-    //     Prevouts::One(
-    //     smart_contract.vout_of_zkbitcoin_utxo as usize,
-    //     &smart_contract.prev_outs[smart_contract.vout_of_zkbitcoin_utxo as usize],
-    // );
+    // TODO: only keep track of one prev_outs in the smart contract
     let thing = [smart_contract.prev_outs[smart_contract.vout_of_zkbitcoin_utxo as usize].clone()];
     let prev_outs = Prevouts::All(&thing);
 
     cache
-        .taproot_encode_signing_data_to(
-            &mut sig_msg,
-            smart_contract.vout_of_zkbitcoin_utxo as usize,
-            &prev_outs,
-            None,
-            None,
-            hash_ty,
-        )
+        .taproot_encode_signing_data_to(&mut sig_msg, 0, &prev_outs, None, None, hash_ty)
         .unwrap();
     let sighash = cache
-        .taproot_signature_hash(
-            smart_contract.vout_of_zkbitcoin_utxo as usize,
-            &prev_outs,
-            None,
-            None,
-            hash_ty,
-        )
+        .taproot_signature_hash(0, &prev_outs, None, None, hash_ty)
         .unwrap();
     sighash.to_byte_array()
 }
@@ -103,11 +85,9 @@ pub fn create_transaction(
         // second output is to zkBitcoin
         // TODO: obviously we shouldn't send it to this address no? This is controlled by an MPC instead of by us
         let zkbitcoin_pubkey: PublicKey = PublicKey::from_str(ZKBITCOIN_PUBKEY).unwrap();
-        let xonly = XOnlyPublicKey::from(zkbitcoin_pubkey);
-        let tweaked = TweakedPublicKey::dangerous_assume_tweaked(xonly.into());
         outputs.push(TxOut {
             value: Amount::from_sat(fee_zkbitcoin_sat),
-            script_pubkey: ScriptBuf::new_p2tr_tweaked(tweaked),
+            script_pubkey: p2tr_script_to(zkbitcoin_pubkey),
         });
 
         outputs
