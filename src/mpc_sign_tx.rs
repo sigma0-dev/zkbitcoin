@@ -3,7 +3,7 @@ use std::str::FromStr;
 
 use bitcoin::{
     absolute::LockTime,
-    key::UntweakedPublicKey,
+    key::{TweakedPublicKey, UntweakedPublicKey},
     sighash::{Prevouts, SighashCache},
     transaction::Version,
     Address, Amount, OutPoint, PublicKey, ScriptBuf, Sequence, TapSighashType, TapTweakHash,
@@ -101,13 +101,13 @@ pub fn create_transaction(
         });
 
         // second output is to zkBitcoin
-        let secp = secp256k1::Secp256k1::default();
         // TODO: obviously we shouldn't send it to this address no? This is controlled by an MPC instead of by us
         let zkbitcoin_pubkey: PublicKey = PublicKey::from_str(ZKBITCOIN_PUBKEY).unwrap();
-        let internal_key = UntweakedPublicKey::from(zkbitcoin_pubkey);
+        let xonly = XOnlyPublicKey::from(zkbitcoin_pubkey);
+        let tweaked = TweakedPublicKey::dangerous_assume_tweaked(xonly.into());
         outputs.push(TxOut {
             value: Amount::from_sat(fee_zkbitcoin_sat),
-            script_pubkey: ScriptBuf::new_p2tr(&secp, internal_key, None),
+            script_pubkey: ScriptBuf::new_p2tr_tweaked(tweaked),
         });
 
         outputs
@@ -129,9 +129,6 @@ pub fn sign_transaction_schnorr(
     // key
     let secp = &secp256k1::Secp256k1::new();
     let keypair = secp256k1::Keypair::from_secret_key(secp, sk);
-    let (internal_key, _parity) = XOnlyPublicKey::from_keypair(&keypair);
-    let tweak = TapTweakHash::from_key_and_tweak(internal_key, None);
-    let tweaked_keypair = keypair.add_xonly_tweak(secp, &tweak.to_scalar()).unwrap();
 
     // the first input is the taproot UTXO we want to spend
     let tx_ind = 0;
@@ -156,7 +153,7 @@ pub fn sign_transaction_schnorr(
         .taproot_signature_hash(tx_ind, &Prevouts::All(prevouts), None, None, hash_ty)
         .unwrap();
     let msg = secp256k1::Message::from_digest(sighash.to_byte_array());
-    secp.sign_schnorr_with_aux_rand(&msg, &tweaked_keypair, &[0u8; 32])
+    secp.sign_schnorr_with_aux_rand(&msg, &keypair, &[0u8; 32])
 }
 
 async fn send_to_p2tr_pubkey(

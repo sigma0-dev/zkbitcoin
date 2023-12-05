@@ -365,6 +365,7 @@ pub fn sign_transaction_frost(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bitcoin::key::{TapTweak, TweakedKeyPair};
     use frost_secp256k1_tr::VerifyingKey;
     use secp256k1::XOnlyPublicKey;
 
@@ -457,9 +458,12 @@ mod tests {
         // and verify
         let sig =
             secp256k1::schnorr::Signature::from_slice(sig_mpc.serialize()[1..].as_ref()).unwrap();
-        let res = secp.verify_schnorr(&sig, &msg, &pubkey_from_direct_type_conversion);
+        let (tweaked, _) = pubkey_from_direct_type_conversion.tap_tweak(&secp, None);
+
+        let res = secp.verify_schnorr(&sig, &msg, &tweaked.into());
         println!("verify signature: {:?}", res);
 
+        // verify using MPC fn
         let is_signature_valid = pubkey.verify(&[0u8; 32], &sig_mpc).is_ok();
         println!("verify with their method: {:?}", is_signature_valid);
 
