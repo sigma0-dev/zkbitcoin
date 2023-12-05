@@ -5,7 +5,10 @@ use clap::{Parser, Subcommand};
 use zkbitcoin::{
     alice_sign_tx::generate_and_broadcast_transaction,
     bob_request::send_bob_request,
-    committee::orchestrator::CommitteeConfig,
+    committee::{
+        self,
+        orchestrator::{CommitteeConfig, Member},
+    },
     constants::{BITCOIN_JSON_RPC_VERSION, ORCHESTRATOR_ADDRESS},
     frost,
     json_rpc_stuff::RpcCtx,
@@ -283,28 +286,62 @@ async fn main() -> Result<()> {
             output_dir,
         } => {
             let output_dir = PathBuf::from(output_dir);
-            //            output_dir.is_relative();
 
-            let (key_packages, pubkey_package) = frost::gen_frost_keys(*num, *threshold).unwrap();
-
-            let pubkey = pubkey_package.verifying_key().to_owned();
+            // deal until we get a public key starting with 0x02
+            let (mut key_packages, mut pubkey_package) =
+                frost::gen_frost_keys(*num, *threshold).unwrap();
+            let mut pubkey = pubkey_package.verifying_key().to_owned();
+            loop {
+                if pubkey.serialize()[0] == 2 {
+                    break;
+                }
+                (key_packages, pubkey_package) = frost::gen_frost_keys(*num, *threshold).unwrap();
+                pubkey = pubkey_package.verifying_key().to_owned();
+            }
 
             // all key packages
-            for (id, key_package) in key_packages.values().enumerate() {
-                let filename = format!("key-{id}.json");
+            {
+                for (id, key_package) in key_packages.values().enumerate() {
+                    let filename = format!("key-{id}.json");
 
-                let path = output_dir.join(filename);
-                let file =
-                    std::fs::File::create(&path).expect("couldn't create file given output dir");
-                serde_json::to_writer_pretty(file, key_package).unwrap();
+                    let path = output_dir.join(filename);
+                    let file = std::fs::File::create(&path)
+                        .expect("couldn't create file given output dir");
+                    serde_json::to_writer_pretty(file, key_package).unwrap();
+                }
             }
 
             // public key package
-            let path = output_dir.join("publickey-package.json");
-            let file = std::fs::File::create(&path).expect("couldn't create file given output dir");
-            serde_json::to_writer_pretty(file, &pubkey).unwrap();
+            {
+                let path = output_dir.join("publickey-package.json");
+                let file =
+                    std::fs::File::create(&path).expect("couldn't create file given output dir");
+                serde_json::to_writer_pretty(file, &pubkey_package).unwrap();
+            }
 
-            // TODO: create the committee-cfg.json file!!!
+            // create the committee-cfg.json file
+            {
+                let ip = "127.0.0.1:889";
+                let committee_cfg = CommitteeConfig {
+                    threshold: *threshold as usize,
+                    members: key_packages
+                        .iter()
+                        .enumerate()
+                        .map(|(id, (member_id, _))| {
+                            (
+                                *member_id,
+                                Member {
+                                    address: format!("{}{}", ip, id),
+                                },
+                            )
+                        })
+                        .collect(),
+                };
+                let path = output_dir.join("committee-cfg.json");
+                let file =
+                    std::fs::File::create(&path).expect("couldn't create file given output dir");
+                serde_json::to_writer_pretty(file, &committee_cfg).unwrap();
+            }
         }
 
         Commands::StartCommitteeNode {

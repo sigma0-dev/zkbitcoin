@@ -1,11 +1,11 @@
 {
   "header": {
     "version": 0,
-    "ciphersuite": "FROST-secp256k1-SHA256-v1"
+    "ciphersuite": "FROST-secp256k1-SHA256-TR-v1"
   },
-  "identifier": "0000000000000000000000000000000000000000000000000000000000000002",
-  "signing_share": "a1d1599e75056049bcb8841b0dec3dd526142849b02437dc9fb964c5109039d1",
-  "verifying_share": "03ae43b8d413c4f244b4daeecf9eef644d36e0edec4628a17341040cec074f72c7",
-  "verifying_key": "031506815b603fba89de4065b2cc9f75df05c56a725d7f47611b24ecb188d8785c",
+  "identifier": "0000000000000000000000000000000000000000000000000000000000000003",
+  "signing_share": "7d973c2031f9e9f79ac52d655edc58202f5e6eeda49eb257991b132841a929b4",
+  "verifying_share": "02aea3efc3c8cde3c4260cb65e64a0c31cb9cd360eabc7e01667bfbe36d7ab612a",
+  "verifying_key": "025f822acf42cdb49de4c322f3131aa396dda0183a37889ecdfba99615ac9f6ff7",
   "min_signers": 2
 }

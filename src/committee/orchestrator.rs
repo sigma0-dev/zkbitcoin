@@ -35,7 +35,7 @@ pub struct CommitteeConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Member {
     /// e.g. "127.0.0.1:8887"
-    address: String,
+    pub address: String,
 }
 
 pub struct Orchestrator {
@@ -167,9 +167,12 @@ impl Orchestrator {
         //
 
         let signing_package = frost_secp256k1_tr::SigningPackage::new(commitments_map, &message);
-        let group_signature =
-            frost_secp256k1_tr::aggregate(&signing_package, &signature_shares, &self.pubkey_package)
-                .context("failed to aggregate signatures")?;
+        let group_signature = frost_secp256k1_tr::aggregate(
+            &signing_package,
+            &signature_shares,
+            &self.pubkey_package,
+        )
+        .context("failed to aggregate signatures")?;
 
         //
         // Include signature in the witness of the transaction
