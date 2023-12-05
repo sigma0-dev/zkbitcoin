@@ -141,10 +141,19 @@ async fn round_1_signing(
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Round2Request {
+    /// The txid that we're referring to.
     pub txid: Txid,
+
+    /// Hash of the proof. Useful to make sure that we're signing the request/proof.
     pub proof_hash: [u8; 32],
+
+    /// The FROST data needed by the MPC participants in the second round.
     pub commitments_map:
         BTreeMap<frost_secp256k1_tr::Identifier, frost_secp256k1_tr::round1::SigningCommitments>,
+
+    /// Digest to hash.
+    /// While not necessary as nodes will recompute it themselves, it is good to double check that everyone is on the same page.
+    pub message: [u8; 32],
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -197,6 +206,15 @@ async fn round_2_signing(
         FEE_ZKBITCOIN_SAT,
     );
     let message = get_digest_to_hash(&transaction, &smart_contract);
+
+    // sanity check
+    if round2request.message != message {
+        return RpcResult::Err(ErrorObjectOwned::owned(
+            jsonrpsee_types::error::UNKNOWN_ERROR_CODE,
+            "message doesn't match",
+            Some(format!("message doesn't match")),
+        ));
+    }
 
     // signing package should be recreated no? as we want to ensure that we agree on what is being signed (should be a deterministic process).
     let signing_package =

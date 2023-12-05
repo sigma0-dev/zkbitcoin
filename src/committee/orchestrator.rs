@@ -108,6 +108,21 @@ impl Orchestrator {
         }
 
         //
+        // Produce transaction and digest
+        //
+
+        let bob_address = bob_request.get_bob_address()?;
+        let utxo = (bob_request.txid, smart_contract.vout_of_zkbitcoin_utxo);
+        let mut transaction = create_transaction(
+            utxo,
+            smart_contract.locked_value,
+            bob_address,
+            FEE_BITCOIN_SAT,
+            FEE_ZKBITCOIN_SAT,
+        );
+        let message = get_digest_to_hash(&transaction, &smart_contract);
+
+        //
         // Round 2
         //
 
@@ -117,6 +132,7 @@ impl Orchestrator {
             txid: bob_request.txid,
             proof_hash: bob_request.proof.hash(),
             commitments_map: commitments_map.clone(),
+            message: message.clone(),
         };
 
         // TODO: do this concurrently with async
@@ -146,21 +162,6 @@ impl Orchestrator {
             // store the commitment
             signature_shares.insert(**member_id, round2_response.signature_share.clone());
         }
-
-        //
-        // Produce transaction and digest
-        //
-
-        let bob_address = bob_request.get_bob_address()?;
-        let utxo = (bob_request.txid, smart_contract.vout_of_zkbitcoin_utxo);
-        let mut transaction = create_transaction(
-            utxo,
-            smart_contract.locked_value,
-            bob_address,
-            FEE_BITCOIN_SAT,
-            FEE_ZKBITCOIN_SAT,
-        );
-        let message = get_digest_to_hash(&transaction, &smart_contract);
 
         //
         // Aggregate signatures
