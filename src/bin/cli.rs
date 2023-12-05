@@ -287,6 +287,8 @@ async fn main() -> Result<()> {
 
             let (key_packages, pubkey_package) = frost::gen_frost_keys(*num, *threshold).unwrap();
 
+            let pubkey = pubkey_package.verifying_key().to_owned();
+
             // all key packages
             for (id, key_package) in key_packages.values().enumerate() {
                 let filename = format!("key-{id}.json");
@@ -300,7 +302,7 @@ async fn main() -> Result<()> {
             // public key package
             let path = output_dir.join("publickey-package.json");
             let file = std::fs::File::create(&path).expect("couldn't create file given output dir");
-            serde_json::to_writer_pretty(file, &pubkey_package).unwrap();
+            serde_json::to_writer_pretty(file, &pubkey).unwrap();
 
             // TODO: create the committee-cfg.json file!!!
         }

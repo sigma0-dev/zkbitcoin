@@ -1,10 +1,10 @@
+use bitcoin::sighash::{Prevouts, SighashCache};
+use bitcoin::{TapSighashType, TapTweakHash, Transaction, TxOut};
 use frost_secp256k1 as frost;
+use frost_secp256k1::{Signature, VerifyingKey};
 use rand::{thread_rng, RngCore};
 use secp256k1::XOnlyPublicKey;
 use std::collections::{BTreeMap, HashMap};
-use bitcoin::{TapSighashType, TapTweakHash, Transaction, TxOut};
-use bitcoin::sighash::{Prevouts, SighashCache};
-use frost_secp256k1::{Signature, VerifyingKey};
 
 pub use frost::keys::{KeyPackage, PublicKeyPackage};
 use secp256k1::hashes::Hash;
@@ -112,7 +112,7 @@ pub fn gen_frost_keys(
     min_signers: u16,
 ) -> Result<
     (
-        HashMap<frost::Identifier, frost::keys::KeyPackage>,
+        BTreeMap<frost::Identifier, frost::keys::KeyPackage>,
         frost::keys::PublicKeyPackage,
     ),
     frost::Error,
@@ -210,7 +210,7 @@ pub fn gen_frost_keys(
     // Keep track of each participant's long-lived key package.
     // In practice each participant will keep its copy; no one
     // will have all the participant's packages.
-    let mut key_packages = HashMap::new();
+    let mut key_packages = BTreeMap::new();
 
     // Keep track of each participant's public key package.
     // In practice, if there is a Coordinator, only they need to store the set.
@@ -246,9 +246,9 @@ pub fn to_xonly_pubkey(verifying_key: &frost::VerifyingKey) -> XOnlyPublicKey {
 }
 
 fn sign(
-    key_packages: &HashMap<frost::Identifier, frost::keys::KeyPackage>,
+    key_packages: &BTreeMap<frost::Identifier, frost::keys::KeyPackage>,
     pubkey_package: &frost::keys::PublicKeyPackage,
-    message: &[u8]
+    message: &[u8],
 ) -> Result<Signature, frost::Error> {
     let rng = &mut thread_rng();
     let min_signers = 3;
@@ -320,7 +320,7 @@ fn sign(
 }
 
 pub fn sign_transaction_frost(
-    key_packages: &HashMap<frost::Identifier, frost::keys::KeyPackage>,
+    key_packages: &BTreeMap<frost::Identifier, frost::keys::KeyPackage>,
     pubkey_package: &frost::keys::PublicKeyPackage,
     tx: &Transaction,
     prevouts: &[TxOut],
@@ -362,14 +362,17 @@ pub fn sign_transaction_frost(
     secp256k1::schnorr::Signature::from_slice(signature.serialize()[1..].as_ref()).unwrap()
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use frost_secp256k1::VerifyingKey;
     use secp256k1::XOnlyPublicKey;
 
-    pub fn get_private_and_public() -> (frost::SigningKey, frost::VerifyingKey) {
+    pub fn get_private_and_public() -> (
+        BTreeMap<frost::Identifier, frost::keys::SecretShare>,
+        frost::SigningKey,
+        frost::keys::PublicKeyPackage,
+    ) {
         let rng = &mut thread_rng();
         let max_signers = 5;
         let min_signers = 3;
@@ -378,7 +381,7 @@ mod tests {
         rng.fill_bytes(&mut bytes);
 
         let private_key = frost::SigningKey::new(rng);
-        let (_shares, pubkey_package) = frost::keys::split(
+        let (shares, pubkey_package) = frost::keys::split(
             &private_key,
             max_signers,
             min_signers,
@@ -387,29 +390,97 @@ mod tests {
         )
         .unwrap();
 
-        (private_key, pubkey_package.verifying_key().to_owned())
+        (shares, private_key, pubkey_package)
     }
 
     /// Useful to see if we correctly convert types from the frost library to the bitcoin library.
     #[test]
     fn test_get_pubkey_out() {
-        let (private, pubkey) = get_private_and_public();
+        // keygen
+        let (mut shares, mut private, mut pubkey_package) = get_private_and_public();
+        let mut pubkey = pubkey_package.verifying_key().to_owned();
 
+        loop {
+            if pubkey.serialize()[0] == 2 {
+                break;
+            }
+
+            (shares, private, pubkey_package) = get_private_and_public();
+            pubkey = pubkey_package.verifying_key().to_owned();
+        }
+
+        // dump private
         let serialized_private = private.serialize();
+        println!("private key: {}", hex::encode(&serialized_private));
 
-        let xonly_pubkey = to_xonly_pubkey(&pubkey);
+        // dump pubkey
         let serialized_pubkey = pubkey.serialize();
-
         println!("{}", hex::encode(&serialized_pubkey));
 
+        // deserialize pubkey
+        let deserialized_pubkey = bitcoin::PublicKey::from_slice(&serialized_pubkey).unwrap();
+
+        // convert pubkey directly
+        let serialized_pubkey = pubkey.serialize();
+        let pubkey_from_direct_type_conversion =
+            XOnlyPublicKey::from_slice(&serialized_pubkey[1..]).unwrap();
+
+        // try to get pubkey from deserialized privkey
         let privkey = secp256k1::SecretKey::from_slice(&serialized_private).unwrap();
         let secp = secp256k1::Secp256k1::default();
-        let pubkey2 = privkey.public_key(&secp);
-        let pubkey3 = bitcoin::PublicKey::from_slice(&serialized_pubkey).unwrap();
-        println!("2: {}", pubkey2);
-        println!("3: {}", pubkey3);
+        let pubkey_from_deserialized_private = privkey.public_key(&secp);
 
-        println!("1: {}", xonly_pubkey);
+        println!(
+            "pubkey_from_direct_type_conversion: {}",
+            pubkey_from_direct_type_conversion
+        );
+        println!(
+            "pubkey_from_deserialized_private: {}",
+            pubkey_from_deserialized_private
+        );
+        println!("deserialized_pubkey: {}", deserialized_pubkey);
+
+        let msg = secp256k1::Message::from_digest([0u8; 32]);
+
+        // now let's try to sign with the MPC
+        let key_packages = shares
+            .iter()
+            .map(|(id, share)| {
+                (
+                    *id,
+                    frost::keys::KeyPackage::try_from(share.clone()).unwrap(),
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+        let sig_mpc = sign(&key_packages, &pubkey_package, msg.as_ref()).unwrap();
+
+        // and verify
+        let sig =
+            secp256k1::schnorr::Signature::from_slice(sig_mpc.serialize()[1..].as_ref()).unwrap();
+        let res = secp.verify_schnorr(&sig, &msg, &pubkey_from_direct_type_conversion);
+        println!("verify signature: {:?}", res);
+
+        let is_signature_valid = pubkey.verify(&[0u8; 32], &sig_mpc).is_ok();
+        println!("verify with their method: {:?}", is_signature_valid);
+
+        if false {
+            // let's sign with the private key directly
+            let secp = secp256k1::Secp256k1::new();
+            let keypair = secp256k1::Keypair::from_secret_key(&secp, &privkey);
+            let (internal_key, _parity) = XOnlyPublicKey::from_keypair(&keypair);
+            let tweak = TapTweakHash::from_key_and_tweak(internal_key, None);
+            let tweaked_keypair = keypair.add_xonly_tweak(&secp, &tweak.to_scalar()).unwrap();
+            let sig_bitcoin_rs =
+                secp.sign_schnorr_with_aux_rand(&msg, &tweaked_keypair, &[0u8; 32]);
+
+            println!("signature via MPC: {:?}", sig_mpc.serialize());
+            println!("signature via bitcoin-rs: {:?}", sig_bitcoin_rs);
+
+            // verify a signature with secp256k1 schnorr
+            let (tweaked_pubkey, _) = tweaked_keypair.x_only_public_key();
+            let res = secp.verify_schnorr(&sig_bitcoin_rs, &msg, &tweaked_pubkey);
+            println!("verify signature: {:?}", res);
+        }
     }
 
     #[test]

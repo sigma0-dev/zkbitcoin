@@ -7,6 +7,15 @@
 * MPC members, a committee of N members, of which T < N needs to be online to unlock the funds by signing a transaction collaboratively (using [FROST]())
 * Orchestrator, an endpoint that Bob can query to unlock the funds, the orchestrator literally "orchestrates" the signature by talking to the MPC members (MPC members don't talk to one another).
 
+## Modification to the MPC to work with Bitcoin's taproot format
+
+* `P` is our public key
+* but the pubkey that's actually used:
+* `Q = P + H(P || commit_data) * G`
+* so the private key to use is:
+* `sk + H(P || commit_data)`
+* since this is an addition, it should work locally when every
+
 ## Flow
 
 The current proposed flow is the following:
