@@ -321,7 +321,7 @@ async fn main() -> Result<()> {
 
             // create the committee-cfg.json file
             {
-                let ip = "127.0.0.1:889";
+                let ip = "http://127.0.0.1:889";
                 let committee_cfg = CommitteeConfig {
                     threshold: *threshold as usize,
                     members: key_packages
