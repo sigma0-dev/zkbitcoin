@@ -1,7 +1,7 @@
 use std::str::FromStr;
 
 use anyhow::{Context, Result};
-use bitcoin::key::UntweakedPublicKey;
+use bitcoin::key::{TweakedPublicKey, UntweakedPublicKey};
 use bitcoin::{
     absolute::LockTime, transaction::Version, Amount, PublicKey, ScriptBuf, Transaction, TxOut,
 };
@@ -11,10 +11,10 @@ use crate::json_rpc_stuff::{
     fund_raw_transaction, send_raw_transaction, sign_transaction, RpcCtx, TransactionOrHex,
 };
 
+/// We use the zkBitcoin key like it's already tweaked.
 pub fn p2tr_script_to(zkbitcoin_pubkey: PublicKey) -> ScriptBuf {
-    let secp = secp256k1::Secp256k1::default();
-    let internal_key = UntweakedPublicKey::from(zkbitcoin_pubkey);
-    ScriptBuf::new_p2tr(&secp, internal_key, None)
+    let tweaked_key = TweakedPublicKey::dangerous_assume_tweaked(zkbitcoin_pubkey.into());
+    ScriptBuf::new_p2tr_tweaked(tweaked_key.into())
 }
 
 /// Generates and broadcasts a transaction to the network.
