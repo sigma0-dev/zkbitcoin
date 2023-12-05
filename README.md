@@ -122,7 +122,7 @@ note that `examples/circuit/public_inputs.json` is also passed to fix inputs `a`
 Bob can unlock funds with the following command:
 
 ```shell
-ENDPOINT="http://127.0.0.1:6666" cargo run --bin cli -- unlock-funds-request --txid "10b675d8673448b4e20d6d1db9437c9771c2666f4e350abba76657cc6fce318b" --verifier-key-path examples/circuit/vk.json --inputs-path examples/circuit/proof_inputs.json --proof-path examples/circuit/proof.json
+ENDPOINT="http://127.0.0.1:6666" cargo run --bin cli -- unlock-funds-request --txid "10b675d8673448b4e20d6d1db9437c9771c2666f4e350abba76657cc6fce318b" --verifier-key-path examples/circuit/vk.json --inputs-path examples/circuit/proof_inputs.json --proof-path examples/circuit/proof.json --recipient-address "tb1q6nkpv2j9lxrm6h3w4skrny3thswgdcca8cx9k6"
 ```
 
 The `ENDPOINT` environment variable is the URL of the orchestrator.
@@ -136,7 +136,7 @@ cargo run --bin cli -- generate-committee --num 3 --threshold 2 --output-dir tes
 ### Start a committee node 
 
 ```shell
-RPC_WALLET="mywallet" RPC_ADDRESS="http://146.190.33.39:18331" RPC_AUTH="root:hellohello" cargo run  -- start-committee-node --key-path examples/committee/key-0.json --publickey-package-path examples/committee/publickey-package.json
+RPC_WALLET="mywallet" RPC_ADDRESS="http://146.190.33.39:18331" RPC_AUTH="root:hellohello" cargo run -- start-committee-node --key-path examples/committee/key-0.json --publickey-package-path examples/committee/publickey-package.json --address "127.0.0.1:8891"
 ```
 
 ### Start an orchestrator/coordinator?

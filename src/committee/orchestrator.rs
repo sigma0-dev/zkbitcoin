@@ -6,6 +6,7 @@ use std::{
 
 use anyhow::{Context, Result};
 use bitcoin::{taproot, TapSighashType, Txid, Witness};
+use itertools::Itertools;
 use jsonrpsee::{server::Server, RpcModule};
 use jsonrpsee_core::RpcResult;
 use jsonrpsee_types::{ErrorObjectOwned, Params};
@@ -70,15 +71,18 @@ impl Orchestrator {
 
         let mut commitments_map = BTreeMap::new();
 
-        // TODO: do this concurrently with async
-        // TODO: take a random sample instead of the first `threshold` members
-        // TODO: what if we get a timeout or can't meet that threshold? loop? send to more members?
-        for (member_id, member) in self
+        // pick a threshold of members at random
+        let threshold_of_members = self
             .committee_cfg
             .members
             .iter()
             .take(self.committee_cfg.threshold)
-        {
+            .collect_vec();
+
+        // TODO: do this concurrently with async
+        // TODO: take a random sample instead of the first `threshold` members
+        // TODO: what if we get a timeout or can't meet that threshold? loop? send to more members?
+        for (member_id, member) in &threshold_of_members {
             // send json RPC request
             let rpc_ctx = RpcCtx {
                 version: Some("2.0"),
@@ -92,13 +96,15 @@ impl Orchestrator {
                 &[serde_json::value::to_raw_value(&bob_request).unwrap()],
             )
             .await
-            .context("unlock_funds error")?;
+            .context("rpc request to committee didn't work");
+            println!("{:?}", resp);
+            let resp = resp?;
 
-            let response: bitcoincore_rpc::jsonrpc::Response = serde_json::from_str(&resp).unwrap();
-            let bob_response: BobResponse = response.result().unwrap();
+            let response: bitcoincore_rpc::jsonrpc::Response = serde_json::from_str(&resp)?;
+            let bob_response: BobResponse = response.result()?;
 
             // store the commitment
-            commitments_map.insert(*member_id, bob_response.commitments);
+            commitments_map.insert(**member_id, bob_response.commitments.clone());
         }
 
         //
@@ -116,12 +122,7 @@ impl Orchestrator {
         // TODO: do this concurrently with async
         // TODO: take a random sample instead of the first `threshold` members
         // TODO: what if we get a timeout or can't meet that threshold? loop? send to more members?
-        for (member_id, member) in self
-            .committee_cfg
-            .members
-            .iter()
-            .take(self.committee_cfg.threshold)
-        {
+        for (member_id, member) in &threshold_of_members {
             // send json RPC request
             let rpc_ctx = RpcCtx {
                 version: Some("2.0"),
@@ -132,16 +133,18 @@ impl Orchestrator {
             let resp = json_rpc_request(
                 &rpc_ctx,
                 "round_2_signing",
-                &[serde_json::value::to_raw_value(&round2_request).unwrap()],
+                &[serde_json::value::to_raw_value(&round2_request)?],
             )
-            .await
-            .context("unlock_funds error")?;
+            .await;
+            println!("resp to 2nd request: {:?}", resp);
 
-            let response: bitcoincore_rpc::jsonrpc::Response = serde_json::from_str(&resp).unwrap();
-            let round2_response: Round2Response = response.result().unwrap();
+            let resp = resp.context("second rpc request to committee didn't work")?;
+
+            let response: bitcoincore_rpc::jsonrpc::Response = serde_json::from_str(&resp)?;
+            let round2_response: Round2Response = response.result()?;
 
             // store the commitment
-            signature_shares.insert(*member_id, round2_response.signature_share);
+            signature_shares.insert(**member_id, round2_response.signature_share.clone());
         }
 
         //
@@ -173,7 +176,7 @@ impl Orchestrator {
         //
         let serialized = group_signature.serialize();
         println!("serialized: {:?}", serialized);
-        let sig = secp256k1::schnorr::Signature::from_slice(&serialized)
+        let sig = secp256k1::schnorr::Signature::from_slice(&serialized[1..])
             .context("couldn't convert signature type")?;
 
         let hash_ty = TapSighashType::All;

@@ -47,7 +47,8 @@ pub async fn generate_and_broadcast_transaction(
                 script_pubkey,
             });
         }
-        // other outputs are fixed public inputs
+        // other outputs are fixed public inputs (for now we don't support that)
+        /*
         for pi in public_inputs {
             let thing: &bitcoin::script::PushBytes = pi.as_bytes().try_into().unwrap();
             let script_pubkey = ScriptBuf::new_op_return(thing);
@@ -57,6 +58,7 @@ pub async fn generate_and_broadcast_transaction(
                 script_pubkey,
             });
         }
+        */
 
         let tx = Transaction {
             version: Version::TWO,

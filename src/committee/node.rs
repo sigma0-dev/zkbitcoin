@@ -50,8 +50,6 @@ pub struct LocalSigningTask {
     pub smart_contract: SmartContract,
     /// Bob's address (taken from the first public input).
     pub bob_address: bitcoin::Address,
-    /// The commitments we produced to start the signature (round 1).
-    pub commitments: frost_secp256k1::round1::SigningCommitments,
     /// The nonces behind these commitments
     pub nonces: frost_secp256k1::round1::SigningNonces,
 }
@@ -78,7 +76,7 @@ async fn round_1_signing(
                 // we've already validated this proof and started round 1,
                 // just return the cached commitments
                 return RpcResult::Ok(BobResponse {
-                    commitments: local_signing_task.commitments.clone(),
+                    commitments: (&local_signing_task.nonces).into(),
                 });
             } else {
                 // this is a new proof, so delete it and allow bob to replace his previous proof
@@ -130,7 +128,6 @@ async fn round_1_signing(
                 proof_hash: bob_request.proof.hash(),
                 smart_contract,
                 bob_address,
-                commitments: commitments.clone(),
                 nonces,
             },
         );
@@ -230,7 +227,10 @@ pub async fn run_server(
     pubkey_package: frost::PublicKeyPackage,
 ) -> anyhow::Result<SocketAddr> {
     let address = address.unwrap_or("127.0.0.1:6666");
-    println!("- starting node at address http://{address}");
+    println!(
+        "- starting node for identifier {id:?} at address http://{address}",
+        id = key_package.identifier()
+    );
 
     let ctx = NodeState {
         bitcoin_rpc_ctx: ctx,

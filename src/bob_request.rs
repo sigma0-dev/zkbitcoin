@@ -26,6 +26,10 @@ use crate::{json_rpc_stuff::RpcCtx, plonk};
 /// A request from Bob to unlock funds from a smart contract should look like this.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BobRequest {
+    /// Bob's address. This is insecure and we should move it to the public inputs.
+    // TODO: move this to public input.
+    pub bob_address: String,
+
     /// The transaction ID that deployed the smart contract.
     pub txid: bitcoin::Txid,
 
@@ -40,20 +44,23 @@ pub struct BobRequest {
 }
 
 impl BobRequest {
-    // TODO: does an address fit in a public element?
+    // TODO: does an address fit in a public input/field element?
     pub fn get_bob_address(&self) -> Result<Address> {
-        if self.public_inputs.len() < 1 {
-            bail!("public input should at least be of size 1 (as first public input is bob's address)");
-        }
+        let address = Address::from_str(&self.bob_address)?.require_network(get_network())?;
+        Ok(address)
+        // if self.public_inputs.len() < 1 {
+        //     bail!("public input should at least be of size 1 (as first public input is bob's address)");
+        // }
 
-        let address_str = &self.public_inputs[0];
-        let bob_address = bitcoin::Address::from_str(address_str)
-            .context("failed to deserialize the first public input as a bitcoin address")?;
-        let bob_address = bob_address.require_network(get_network()).context({
-            "network of bitcoin address needs to be testnet or bitcoin (depending on cfg)"
-        })?;
+        // let address_str = &self.public_inputs[0];
+        // let bob_pubkey = bitcoin::PublicKey::from_slice(todo!());
+        // let bob_address = bitcoin::Address::from_str(address_str)
+        //     .context("failed to deserialize the first public input as a bitcoin address")?;
+        // let bob_address = bob_address.require_network(get_network()).context({
+        //     "network of bitcoin address needs to be testnet or bitcoin (depending on cfg)"
+        // })?;
 
-        Ok(bob_address)
+        // Ok(bob_address)
     }
 }
 
@@ -281,6 +288,7 @@ pub async fn validate_request(
     {
         println!("pi1: {:?}", pi1);
         println!("pi2: {:?}", pi2);
+        println!("pi2 as bytes: {:?}", pi2.as_bytes());
         ensure!(pi1 == pi2.as_bytes(), "public inputs don't match");
     }
 
@@ -376,6 +384,7 @@ mod tests {
 
         // create bob request
         let bob_request = BobRequest {
+            bob_address: "".to_string(),
             txid: bitcoin::Txid::all_zeros(),
             vk,
             proof,

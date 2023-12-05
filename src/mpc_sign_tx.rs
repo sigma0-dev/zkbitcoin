@@ -23,20 +23,29 @@ pub fn get_digest_to_hash(
     transaction: &bitcoin::Transaction,
     smart_contract: &SmartContract,
 ) -> [u8; 32] {
-    // the first input is the taproot UTXO we want to spend
-    let tx_ind = 0;
-
+    // TODO: return Result
     // the sighash flag is always ALL
     let hash_ty = TapSighashType::All;
 
     // sighash
     let mut cache = SighashCache::new(transaction);
     let mut sig_msg = Vec::new();
+    println!("{:?}", smart_contract.vout_of_zkbitcoin_utxo);
+    println!("{:?}", smart_contract.prev_outs);
+    // TODO: only keep track of one prev_outs in the smart contract
+
+    //     Prevouts::One(
+    //     smart_contract.vout_of_zkbitcoin_utxo as usize,
+    //     &smart_contract.prev_outs[smart_contract.vout_of_zkbitcoin_utxo as usize],
+    // );
+    let thing = [smart_contract.prev_outs[smart_contract.vout_of_zkbitcoin_utxo as usize].clone()];
+    let prev_outs = Prevouts::All(&thing);
+
     cache
         .taproot_encode_signing_data_to(
             &mut sig_msg,
-            tx_ind,
-            &Prevouts::All(&smart_contract.prev_outs),
+            smart_contract.vout_of_zkbitcoin_utxo as usize,
+            &prev_outs,
             None,
             None,
             hash_ty,
@@ -44,8 +53,8 @@ pub fn get_digest_to_hash(
         .unwrap();
     let sighash = cache
         .taproot_signature_hash(
-            tx_ind,
-            &Prevouts::All(&smart_contract.prev_outs),
+            smart_contract.vout_of_zkbitcoin_utxo as usize,
+            &prev_outs,
             None,
             None,
             hash_ty,

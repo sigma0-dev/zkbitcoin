@@ -1,5 +1,6 @@
 use std::{path::PathBuf, str::FromStr};
 
+use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use zkbitcoin::{
     alice_sign_tx::generate_and_broadcast_transaction,
@@ -58,6 +59,10 @@ enum Commands {
         #[arg(short, long)]
         txid: String,
 
+        /// The address of the recipient.
+        #[arg(short, long)]
+        recipient_address: String,
+
         /// The path to the verifier key in JSON format (see `examples/circuit/vk.json` for an example).
         #[arg(short, long)]
         verifier_key_path: String,
@@ -93,15 +98,19 @@ enum Commands {
     StartCommitteeNode {
         /// The wallet name of the RPC full node.
         #[arg(env = "RPC_WALLET")]
-        wallet: Option<String>,
+        rpc_wallet: Option<String>,
 
         /// The `http(s)://address:port`` of the RPC full node.
         #[arg(env = "RPC_ADDRESS")]
-        address: Option<String>,
+        rpc_address: Option<String>,
 
         /// The `user:password`` of the RPC full node.
         #[arg(env = "RPC_AUTH")]
-        auth: Option<String>,
+        rpc_auth: Option<String>,
+
+        /// The address to run the node on.
+        #[arg(short, long)]
+        address: Option<String>,
 
         #[arg(short, long)]
         key_path: String,
@@ -114,18 +123,15 @@ enum Commands {
     StartOrchestrator {
         /// The wallet name of the RPC full node.
         #[arg(env = "RPC_WALLET")]
-        wallet: Option<String>,
+        rpc_wallet: Option<String>,
 
-        /// The `http(s)://address:port`` of the RPC full node.
+        /// The `http(s)://address:port` of the RPC full node.
         #[arg(env = "RPC_ADDRESS")]
-        address: Option<String>,
+        rpc_address: Option<String>,
 
-        /// The `user:password`` of the RPC full node.
+        /// The `user:password` of the RPC full node.
         #[arg(env = "RPC_AUTH")]
-        auth: Option<String>,
-
-        #[arg(short, long)]
-        threshold: usize,
+        rpc_auth: Option<String>,
 
         #[arg(short, long)]
         publickey_package_path: String,
@@ -136,7 +142,7 @@ enum Commands {
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<()> {
     env_logger::init();
 
     let cli = Cli::parse();
@@ -221,6 +227,7 @@ async fn main() {
         Commands::UnlockFundsRequest {
             orchestrator_address,
             txid,
+            recipient_address,
             verifier_key_path,
             inputs_path,
             proof_path,
@@ -251,6 +258,7 @@ async fn main() {
 
             // create bob request
             let bob_request = zkbitcoin::bob_request::BobRequest {
+                bob_address: recipient_address.clone(),
                 txid: bitcoin::Txid::from_str(txid).unwrap(),
                 vk,
                 proof,
@@ -259,10 +267,12 @@ async fn main() {
 
             // send bob's request to the MPC committee.
             // TODO: we need a coordinator.
-            let mpc_address = orchestrator_address
+            let address = orchestrator_address
                 .as_deref()
                 .unwrap_or(ORCHESTRATOR_ADDRESS);
-            let bob_response = send_bob_request(mpc_address, bob_request).await.unwrap();
+            let bob_response = send_bob_request(address, bob_request)
+                .await
+                .context("error while sending request to orchestrator")?;
 
             println!("{:?}", bob_response);
         }
@@ -291,20 +301,23 @@ async fn main() {
             let path = output_dir.join("publickey-package.json");
             let file = std::fs::File::create(&path).expect("couldn't create file given output dir");
             serde_json::to_writer_pretty(file, &pubkey_package).unwrap();
+
+            // TODO: create the committee-cfg.json file!!!
         }
 
         Commands::StartCommitteeNode {
-            wallet,
+            rpc_wallet,
+            rpc_address,
+            rpc_auth,
             address,
-            auth,
             key_path,
             publickey_package_path,
         } => {
             let ctx = RpcCtx::new(
                 Some(BITCOIN_JSON_RPC_VERSION),
-                wallet.clone(),
-                address.clone(),
-                auth.clone(),
+                rpc_wallet.clone(),
+                rpc_address.clone(),
+                rpc_auth.clone(),
             );
 
             let key_package = {
@@ -323,26 +336,28 @@ async fn main() {
                 publickey_package
             };
 
-            zkbitcoin::committee::node::run_server(None, ctx, key_package, pubkey_package)
-                .await
-                .unwrap();
+            zkbitcoin::committee::node::run_server(
+                address.as_deref(),
+                ctx,
+                key_package,
+                pubkey_package,
+            )
+            .await
+            .unwrap();
         }
 
         Commands::StartOrchestrator {
-            wallet,
-            address,
-            auth,
-            threshold,
+            rpc_wallet,
+            rpc_address,
+            rpc_auth,
             publickey_package_path,
             committee_cfg_path,
         } => {
-            // sanity check (unfortunately the publickey_package doesn't contain this info)
-            assert!(*threshold > 0);
             let ctx = RpcCtx::new(
                 Some(BITCOIN_JSON_RPC_VERSION),
-                wallet.clone(),
-                address.clone(),
-                auth.clone(),
+                rpc_wallet.clone(),
+                rpc_address.clone(),
+                rpc_auth.clone(),
             );
 
             let pubkey_package = {
@@ -361,6 +376,9 @@ async fn main() {
                 publickey_package
             };
 
+            // sanity check (unfortunately the publickey_package doesn't contain this info)
+            assert!(committee_cfg.threshold > 0);
+
             zkbitcoin::committee::orchestrator::run_server(
                 Some(ORCHESTRATOR_ADDRESS),
                 ctx,
@@ -371,4 +389,6 @@ async fn main() {
             .unwrap();
         }
     }
+
+    Ok(())
 }

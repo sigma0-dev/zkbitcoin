@@ -14,7 +14,7 @@ use std::time::Duration;
 use crate::constants::BITCOIN_JSON_RPC_VERSION;
 
 /// Timeout (in seconds) for json rpc requests.
-const JSON_RPC_TIMEOUT: u64 = 2;
+const JSON_RPC_TIMEOUT: u64 = 5;
 
 //
 // Context
