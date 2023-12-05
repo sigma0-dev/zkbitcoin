@@ -47,14 +47,14 @@ pub struct SigningTask {
     message: Vec<u8>,
 
     /// The commitments collected during round 1.
-    commitments: BTreeMap<frost_secp256k1::Identifier, frost_secp256k1::round1::SigningCommitments>,
+    commitments: BTreeMap<frost_secp256k1_tr::Identifier, frost_secp256k1_tr::round1::SigningCommitments>,
 
     /// The signing package formed at the end of round 1.
-    signing_package: Option<frost_secp256k1::SigningPackage>,
+    signing_package: Option<frost_secp256k1_tr::SigningPackage>,
 
     /// The signature shares at the end of round 2.
     signature_shares:
-        BTreeMap<frost_secp256k1::Identifier, frost_secp256k1::round2::SignatureShare>,
+        BTreeMap<frost_secp256k1_tr::Identifier, frost_secp256k1_tr::round2::SignatureShare>,
 }
 ```
 
@@ -68,9 +68,9 @@ pub struct LocalSigningTask {
     /// The smart contract that locked the value.
     pub smart_contract: SmartContract,
     /// The commitments we produced to start the signature (round 1).
-    pub commitments: frost_secp256k1::round1::SigningCommitments,
+    pub commitments: frost_secp256k1_tr::round1::SigningCommitments,
     /// The nonces behind these commitments
-    pub nonces: frost_secp256k1::round1::SigningNonces,
+    pub nonces: frost_secp256k1_tr::round1::SigningNonces,
 }
 ```
 

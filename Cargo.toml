@@ -13,7 +13,7 @@ bitcoincore-rpc = "0.18"
 clap = { version = "4.4.10", features = ["derive", "env"] }
 env_logger = "0.10.1"
 #frost-secp256k1 = "1.0.0-rc.0"
-frost-secp256k1-tr = { package = "frost-secp256k1", git = "https://github.com/mimoo/frost", branch = "mimoo/fix2" }
+frost-secp256k1-tr = { git = "https://github.com/mimoo/frost", branch = "mimoo/fix2" }
 hex = "0.4.3"
 itertools = "0.12.0"
 jsonrpsee = { version = "0.20.3", features = ["server"] }

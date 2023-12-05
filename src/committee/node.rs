@@ -6,6 +6,7 @@ use std::{
 
 use anyhow::Error;
 use bitcoin::Txid;
+use frost_secp256k1_tr::round1;
 use jsonrpsee::{
     server::{RpcModule, Server},
     types::Params,
@@ -51,7 +52,7 @@ pub struct LocalSigningTask {
     /// Bob's address (taken from the first public input).
     pub bob_address: bitcoin::Address,
     /// The nonces behind these commitments
-    pub nonces: frost_secp256k1::round1::SigningNonces,
+    pub nonces: round1::SigningNonces,
 }
 
 //
@@ -117,7 +118,7 @@ async fn round_1_signing(
     // round 1 of FROST
     let rng = &mut thread_rng();
     let (nonces, commitments) =
-        frost_secp256k1::round1::commit(context.key_package.signing_share(), rng);
+        frost_secp256k1_tr::round1::commit(context.key_package.signing_share(), rng);
 
     // store it locally
     {
@@ -143,12 +144,12 @@ pub struct Round2Request {
     pub txid: Txid,
     pub proof_hash: [u8; 32],
     pub commitments_map:
-        BTreeMap<frost_secp256k1::Identifier, frost_secp256k1::round1::SigningCommitments>,
+        BTreeMap<frost_secp256k1_tr::Identifier, frost_secp256k1_tr::round1::SigningCommitments>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Round2Response {
-    pub signature_share: frost_secp256k1::round2::SignatureShare,
+    pub signature_share: frost_secp256k1_tr::round2::SignatureShare,
 }
 
 async fn round_2_signing(
@@ -199,9 +200,9 @@ async fn round_2_signing(
 
     // signing package should be recreated no? as we want to ensure that we agree on what is being signed (should be a deterministic process).
     let signing_package =
-        frost_secp256k1::SigningPackage::new(round2request.commitments_map.clone(), &message);
+        frost_secp256k1_tr::SigningPackage::new(round2request.commitments_map.clone(), &message);
     let signature_share =
-        frost_secp256k1::round2::sign(&signing_package, &nonces, &context.key_package).map_err(
+        frost_secp256k1_tr::round2::sign(&signing_package, &nonces, &context.key_package).map_err(
             |err| {
                 ErrorObjectOwned::owned(
                     jsonrpsee_types::error::UNKNOWN_ERROR_CODE,

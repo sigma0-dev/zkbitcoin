@@ -1,7 +1,7 @@
 use bitcoin::sighash::{Prevouts, SighashCache};
 use bitcoin::{TapSighashType, TapTweakHash, Transaction, TxOut};
-use frost_secp256k1 as frost;
-use frost_secp256k1::{Signature, VerifyingKey};
+use frost_secp256k1_tr as frost;
+use frost_secp256k1_tr::{Signature, VerifyingKey};
 use rand::{thread_rng, RngCore};
 use secp256k1::XOnlyPublicKey;
 use std::collections::{BTreeMap, HashMap};
@@ -365,7 +365,7 @@ pub fn sign_transaction_frost(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use frost_secp256k1::VerifyingKey;
+    use frost_secp256k1_tr::VerifyingKey;
     use secp256k1::XOnlyPublicKey;
 
     pub fn get_private_and_public() -> (

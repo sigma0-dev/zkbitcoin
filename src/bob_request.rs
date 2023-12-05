@@ -67,7 +67,7 @@ impl BobRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BobResponse {
     //pub txid: bitcoin::Txid,
-    pub commitments: frost_secp256k1::round1::SigningCommitments,
+    pub commitments: frost_secp256k1_tr::round1::SigningCommitments,
 }
 
 pub async fn send_bob_request(address: &str, request: BobRequest) -> Result<BobResponse> {

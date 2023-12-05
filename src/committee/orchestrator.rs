@@ -29,7 +29,7 @@ use super::node::{Round2Request, Round2Response};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CommitteeConfig {
     pub threshold: usize,
-    pub members: HashMap<frost_secp256k1::Identifier, Member>,
+    pub members: HashMap<frost_secp256k1_tr::Identifier, Member>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -40,14 +40,14 @@ pub struct Member {
 
 pub struct Orchestrator {
     pub bitcoin_rpc_ctx: RpcCtx,
-    pub pubkey_package: frost_secp256k1::keys::PublicKeyPackage,
+    pub pubkey_package: frost_secp256k1_tr::keys::PublicKeyPackage,
     pub committee_cfg: CommitteeConfig,
 }
 
 impl Orchestrator {
     pub fn new(
         bitcoin_rpc_ctx: RpcCtx,
-        pubkey_package: frost_secp256k1::keys::PublicKeyPackage,
+        pubkey_package: frost_secp256k1_tr::keys::PublicKeyPackage,
         committee_cfg: CommitteeConfig,
     ) -> Self {
         Self {
@@ -166,9 +166,9 @@ impl Orchestrator {
         // Aggregate signatures
         //
 
-        let signing_package = frost_secp256k1::SigningPackage::new(commitments_map, &message);
+        let signing_package = frost_secp256k1_tr::SigningPackage::new(commitments_map, &message);
         let group_signature =
-            frost_secp256k1::aggregate(&signing_package, &signature_shares, &self.pubkey_package)
+            frost_secp256k1_tr::aggregate(&signing_package, &signature_shares, &self.pubkey_package)
                 .context("failed to aggregate signatures")?;
 
         //
