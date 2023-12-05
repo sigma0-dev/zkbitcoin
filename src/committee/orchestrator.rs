@@ -187,7 +187,7 @@ impl Orchestrator {
         let final_signature = taproot::Signature { sig, hash_ty };
         let mut witness = Witness::new();
         witness.push(final_signature.to_vec());
-        transaction.input[smart_contract.vout_of_zkbitcoin_utxo as usize].witness = witness;
+        transaction.input[0].witness = witness;
 
         //
         // Broadcast transaction
