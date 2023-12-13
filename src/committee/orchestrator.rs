@@ -7,13 +7,17 @@ use std::{
 
 use anyhow::{Context, Result};
 use bitcoin::{
+    hex::DisplayHex,
     key::{TapTweak, UntweakedPublicKey},
     secp256k1, taproot, TapSighashType, Txid, Witness,
 };
+use frost_secp256k1_tr::Ciphersuite;
+use frost_secp256k1_tr::Group;
 use itertools::Itertools;
 use jsonrpsee::{server::Server, RpcModule};
 use jsonrpsee_core::RpcResult;
 use jsonrpsee_types::{ErrorObjectOwned, Params};
+use secp256k1::XOnlyPublicKey;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -173,12 +177,17 @@ impl Orchestrator {
 
         println!("- aggregate signature shares");
         let signing_package = frost_secp256k1_tr::SigningPackage::new(commitments_map, &message);
-        let group_signature = frost_secp256k1_tr::aggregate(
-            &signing_package,
-            &signature_shares,
-            &self.pubkey_package,
-        )
-        .context("failed to aggregate signatures")?;
+        let group_signature = {
+            let res = frost_secp256k1_tr::aggregate(
+                &signing_package,
+                &signature_shares,
+                &self.pubkey_package,
+            );
+            if let Some(err) = res.err() {
+                println!("error: {}", err);
+            }
+            res.context("failed to aggregate signatures")?
+        };
 
         #[cfg(debug_assertions)]
         {
@@ -193,6 +202,35 @@ impl Orchestrator {
             let zkbitcoin_pubkey: bitcoin::PublicKey =
                 bitcoin::PublicKey::from_str(ZKBITCOIN_PUBKEY).unwrap();
             assert_eq!(deserialized_pubkey, zkbitcoin_pubkey);
+
+            // let's compare pubkeys
+            {
+                // from hardcoded
+                let secp = secp256k1::Secp256k1::default();
+                let zkbitcoin_pubkey: bitcoin::PublicKey =
+                    bitcoin::PublicKey::from_str(ZKBITCOIN_PUBKEY).unwrap();
+                let internal_key = UntweakedPublicKey::from(zkbitcoin_pubkey);
+                let (tweaked, _) = internal_key.tap_tweak(&secp, None);
+                let tweaked = tweaked.to_string();
+                println!("tweaked: {}", tweaked);
+
+                // from FROST
+                let xone = XOnlyPublicKey::from_slice(&group_pubkey.serialize()[1..]).unwrap();
+                let (tweaked2, _) = xone.tap_tweak(&secp, None);
+                let tweaked2 = tweaked2.to_string();
+                println!("tweaked2: {}", tweaked2);
+                assert_eq!(tweaked, tweaked2);
+
+                // twaked
+                let tweaked3 =
+                    frost_secp256k1_tr::Secp256K1Sha256::tweaked_public_key(group_pubkey.element());
+                let s = <frost_secp256k1_tr::Secp256K1Sha256 as Ciphersuite>::Group::serialize(
+                    &tweaked3,
+                );
+                let tweaked3 = s.to_lower_hex_string();
+                println!("tweaked3: {}", tweaked3);
+                //assert_eq!(tweaked2, tweaked3);
+            }
 
             // verify using bitcoin lib
             let sig = secp256k1::schnorr::Signature::from_slice(&group_signature.serialize()[1..])

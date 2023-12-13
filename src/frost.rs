@@ -441,7 +441,8 @@ mod tests {
         );
         println!("deserialized_pubkey: {}", deserialized_pubkey);
 
-        let msg = secp256k1::Message::from_digest([0u8; 32]);
+        let digest = [0u8; 32];
+        let msg = secp256k1::Message::from_digest(digest);
 
         // now let's try to sign with the MPC
         let key_packages = shares
@@ -456,18 +457,17 @@ mod tests {
         let sig_mpc = sign(&key_packages, &pubkey_package, msg.as_ref()).unwrap();
 
         // and verify
-        let sig =
-            secp256k1::schnorr::Signature::from_slice(sig_mpc.serialize()[1..].as_ref()).unwrap();
+        let sig = secp256k1::schnorr::Signature::from_slice(&sig_mpc.serialize()[1..]).unwrap();
         let (tweaked, _) = pubkey_from_direct_type_conversion.tap_tweak(&secp, None);
 
         let res = secp.verify_schnorr(&sig, &msg, &tweaked.into());
         println!("verify signature: {:?}", res);
 
         // verify using MPC fn
-        let is_signature_valid = pubkey.verify(&[0u8; 32], &sig_mpc).is_ok();
+        let is_signature_valid = pubkey.verify(&digest, &sig_mpc).is_ok();
         println!("verify with their method: {:?}", is_signature_valid);
 
-        if false {
+        {
             // let's sign with the private key directly
             let secp = secp256k1::Secp256k1::new();
             let keypair = secp256k1::Keypair::from_secret_key(&secp, &privkey);
