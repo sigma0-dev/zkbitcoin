@@ -126,8 +126,10 @@ In order to spend such a transaction Bob needs to produce:
 To reiterate, the public input is structured as follows:
 
 ```python
-PI = [prev_state | new_state | truncated_txid | amount_out | amount_in ]
+PI = [new_state | prev_state | truncated_txid | amount_out | amount_in ]
 ```
+
+> Note: we place `new_state` first, because outputs in Circom are placed first (see [this tweet](https://twitter.com/tjade273/status/1732067115190956085)).
 
 When receiving such a _valid_ request (e.g. proof verifies), the MPC committee signs the zkapp input of the transaction and returns it to Bob.
 
