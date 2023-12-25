@@ -118,15 +118,10 @@ impl Orchestrator {
         //
         // Produce transaction and digest
         //
-
-        let bob_address = bob_request.get_bob_address()?;
-        let utxo = (bob_request.txid, smart_contract.vout_of_zkbitcoin_utxo);
         let mut transaction = create_transaction(
-            utxo,
-            smart_contract.locked_value,
-            bob_address,
-            FEE_BITCOIN_SAT,
-            FEE_ZKBITCOIN_SAT,
+            &smart_contract,
+            bob_request.txid,
+            bob_request.get_bob_address()?,
         );
         let message = get_digest_to_hash(&transaction, &smart_contract);
 

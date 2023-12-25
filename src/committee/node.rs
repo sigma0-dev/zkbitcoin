@@ -197,14 +197,7 @@ async fn round_2_signing(
     };
 
     // deterministically create transaction
-    let utxo = (round2request.txid, smart_contract.vout_of_zkbitcoin_utxo);
-    let transaction = create_transaction(
-        utxo,
-        smart_contract.locked_value,
-        bob_address,
-        FEE_BITCOIN_SAT,
-        FEE_ZKBITCOIN_SAT,
-    );
+    let transaction = create_transaction(&smart_contract, round2request.txid, bob_address);
     let message = get_digest_to_hash(&transaction, &smart_contract);
 
     // sanity check

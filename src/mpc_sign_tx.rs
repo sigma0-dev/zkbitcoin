@@ -14,6 +14,7 @@ use secp256k1::{hashes::Hash, All, Secp256k1, XOnlyPublicKey};
 use crate::{
     alice_sign_tx::p2tr_script_to,
     bob_request::SmartContract,
+    constants::{FEE_BITCOIN_SAT, FEE_ZKBITCOIN_SAT},
     json_rpc_stuff::{
         fund_raw_transaction, send_raw_transaction, sign_transaction, TransactionOrHex,
     },
@@ -46,11 +47,9 @@ pub fn get_digest_to_hash(
 }
 
 pub fn create_transaction(
-    utxo: (Txid, u32),
-    amount: Amount,
+    smart_contract: &SmartContract,
+    txid: Txid,
     bob_address: Address,
-    fee_bitcoin_sat: u64,
-    fee_zkbitcoin_sat: u64,
 ) -> Transaction {
     // TODO: should we enforce that tx.value == amount?
 
@@ -58,8 +57,8 @@ pub fn create_transaction(
         // the first input is the smart contract we're unlocking
         let input = TxIn {
             previous_output: OutPoint {
-                txid: utxo.0,
-                vout: utxo.1,
+                txid,
+                vout: smart_contract.vout_of_zkbitcoin_utxo,
             },
             script_sig: ScriptBuf::new(),
             sequence: Sequence::MAX,
@@ -70,8 +69,9 @@ pub fn create_transaction(
     };
 
     // we need to subtract the amount to cover for the fee
-    let amount_for_bob =
-        amount - Amount::from_sat(fee_bitcoin_sat) - Amount::from_sat(fee_zkbitcoin_sat);
+    let amount_for_bob = smart_contract.locked_value
+        - Amount::from_sat(FEE_BITCOIN_SAT)
+        - Amount::from_sat(FEE_ZKBITCOIN_SAT);
 
     let outputs = {
         let mut outputs = vec![];
@@ -86,7 +86,7 @@ pub fn create_transaction(
         // TODO: obviously we shouldn't send it to this address no? This is controlled by an MPC instead of by us
         let zkbitcoin_pubkey: PublicKey = PublicKey::from_str(ZKBITCOIN_PUBKEY).unwrap();
         outputs.push(TxOut {
-            value: Amount::from_sat(fee_zkbitcoin_sat),
+            value: Amount::from_sat(FEE_ZKBITCOIN_SAT),
             script_pubkey: p2tr_script_to(zkbitcoin_pubkey),
         });
 
@@ -276,13 +276,14 @@ mod tests {
 
         let fee_bitcoin_sat = 400;
         let fee_zkbitcoin_sat = 100;
-        let mut tx = create_transaction(
-            (txid, vout),
-            satoshi_amount,
-            bob_address,
-            fee_bitcoin_sat,
-            fee_zkbitcoin_sat,
-        );
+        let smart_contract = SmartContract {
+            locked_value: satoshi_amount,
+            vk_hash: [0; 32],
+            public_inputs: vec![],
+            vout_of_zkbitcoin_utxo: 0,
+            prev_outs: vec![],
+        };
+        let mut tx = create_transaction(&smart_contract, txid, bob_address);
 
         // prevouts
         let prevouts = &[tx_out];
@@ -321,15 +322,14 @@ mod tests {
             .require_network(Network::Testnet)
             .unwrap();
 
-        let fee_bitcoin_sat = 800;
-        let fee_zkbitcoin_sat = 200;
-        let mut tx = create_transaction(
-            (txid, vout),
-            satoshi_amount,
-            bob_address,
-            fee_bitcoin_sat,
-            fee_zkbitcoin_sat,
-        );
+        let smart_contract = SmartContract {
+            locked_value: satoshi_amount,
+            vk_hash: [0; 32],
+            public_inputs: vec![],
+            vout_of_zkbitcoin_utxo: 0,
+            prev_outs: vec![],
+        };
+        let mut tx = create_transaction(&smart_contract, txid, bob_address);
 
         // prevouts
         let prevouts = vec![TxOut {
