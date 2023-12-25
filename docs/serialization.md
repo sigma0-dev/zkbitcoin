@@ -96,3 +96,6 @@ The function logic calls [DecodeHexTx](https://github.com/bitcoin/bitcoin/blob/m
 so if we're not passing anything it should detect the special serialization... so I'm not sure why it's failing.
 
 Turns out I believe there's a bug in the lib we're using https://github.com/rust-bitcoin/rust-bitcoin/pull/2239
+
+> Note: one recommendation seems to be using PSBT instead of raw transactions.
+> 
