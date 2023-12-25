@@ -51,15 +51,14 @@ pub async fn generate_and_broadcast_transaction(
         }
 
         // other outputs are the initial state (for statefull zkapps)
-        {
-            if !public_inputs.is_empty() {
-                println!(
-                    "- stateful zkapp detected (with {} public inputs)",
-                    public_inputs.len()
-                );
-            } else {
-                println!("- stateless zkapp detected");
-            }
+        if public_inputs.is_empty() {
+            println!("- stateless zkapp detected");
+        } else {
+            println!(
+                "- stateful zkapp detected (with {} public inputs)",
+                public_inputs.len()
+            );
+
             for pi in public_inputs {
                 let thing: &bitcoin::script::PushBytes = pi.as_bytes().try_into().unwrap();
                 let script_pubkey = ScriptBuf::new_op_return(thing);

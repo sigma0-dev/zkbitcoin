@@ -14,7 +14,7 @@ use secp256k1::{hashes::Hash, All, Secp256k1, XOnlyPublicKey};
 use crate::{
     alice_sign_tx::p2tr_script_to,
     bob_request::SmartContract,
-    constants::{FEE_BITCOIN_SAT, FEE_ZKBITCOIN_SAT},
+    constants::{FEE_BITCOIN_SAT, FEE_ZKBITCOIN_SAT, ZKBITCOIN_FEE_PUBKEY},
     json_rpc_stuff::{
         fund_raw_transaction, send_raw_transaction, sign_transaction, TransactionOrHex,
     },
@@ -51,10 +51,8 @@ pub fn create_transaction(
     txid: Txid,
     bob_address: Address,
 ) -> Transaction {
-    // TODO: should we enforce that tx.value == amount?
-
+    // there's only one input: the zkapp we're using
     let inputs = {
-        // the first input is the smart contract we're unlocking
         let input = TxIn {
             previous_output: OutPoint {
                 txid,
@@ -68,14 +66,26 @@ pub fn create_transaction(
         vec![input]
     };
 
+    // create outputs
+    let mut outputs = vec![];
+
+    // first output is to
+
+    // second output is to zkBitcoin fund
+    {
+        let zkbitcoin_pubkey: PublicKey = PublicKey::from_str(ZKBITCOIN_FEE_PUBKEY).unwrap();
+        outputs.push(TxOut {
+            value: Amount::from_sat(FEE_ZKBITCOIN_SAT),
+            script_pubkey: p2tr_script_to(zkbitcoin_pubkey),
+        });
+    }
+
     // we need to subtract the amount to cover for the fee
     let amount_for_bob = smart_contract.locked_value
         - Amount::from_sat(FEE_BITCOIN_SAT)
         - Amount::from_sat(FEE_ZKBITCOIN_SAT);
 
-    let outputs = {
-        let mut outputs = vec![];
-
+    {
         // first output is a P2TR to Bob
         outputs.push(TxOut {
             value: amount_for_bob,
@@ -89,10 +99,9 @@ pub fn create_transaction(
             value: Amount::from_sat(FEE_ZKBITCOIN_SAT),
             script_pubkey: p2tr_script_to(zkbitcoin_pubkey),
         });
+    }
 
-        outputs
-    };
-
+    // create final transaction
     Transaction {
         version: Version::TWO,
         lock_time: LockTime::ZERO, // no lock time

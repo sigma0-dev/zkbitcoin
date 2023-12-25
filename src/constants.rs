@@ -1,5 +1,10 @@
 //! Constants used in the zkBitcoin library.
 
+/// The public key of the zkBitcoin fund (to pay fees).
+// TODO: change this!!!
+pub const ZKBITCOIN_FEE_PUBKEY: &str =
+    "025f822acf42cdb49de4c322f3131aa396dda0183a37889ecdfba99615ac9f6ff7"; // TODO: change this to a real pubkey in prod
+
 /// The public key of zkBitcoin.
 pub const ZKBITCOIN_PUBKEY: &str =
     "025f822acf42cdb49de4c322f3131aa396dda0183a37889ecdfba99615ac9f6ff7"; // TODO: change this to a real pubkey in prod
