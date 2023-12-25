@@ -5,7 +5,7 @@ use std::{
 };
 
 use anyhow::Error;
-use bitcoin::Txid;
+use bitcoin::{Transaction, Txid};
 use frost_secp256k1_tr::round1;
 use jsonrpsee::{
     server::{RpcModule, Server},
@@ -17,7 +17,7 @@ use rand::thread_rng;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    bob_request::{validate_request, BobRequest, BobResponse, SmartContract},
+    bob_request::{BobRequest, BobResponse, SmartContract},
     constants::{FEE_BITCOIN_SAT, FEE_ZKBITCOIN_SAT},
     frost,
     json_rpc_stuff::RpcCtx,
@@ -50,7 +50,7 @@ pub struct LocalSigningTask {
     /// The smart contract that locked the value.
     pub smart_contract: SmartContract,
     /// Bob's address (taken from the first public input).
-    pub bob_address: bitcoin::Address,
+    pub tx: Transaction,
     /// The nonces behind these commitments
     pub nonces: round1::SigningNonces,
 }
@@ -70,9 +70,16 @@ async fn round_1_signing(
     println!("received request: {:?}", bob_request);
 
     // check if we already have a local signing task under that txid
+    let txid = bob_request.txid().map_err(|e| {
+        ErrorObjectOwned::owned(
+            jsonrpsee_types::error::UNKNOWN_ERROR_CODE,
+            "couldn't get txid for zkapp in request",
+            Some(format!("{e}")),
+        )
+    })?;
     let smart_contract = {
         let mut signing_tasks = context.signing_tasks.write().unwrap();
-        if let Some(local_signing_task) = signing_tasks.get(&bob_request.txid) {
+        if let Some(local_signing_task) = signing_tasks.get(&txid) {
             if local_signing_task.proof_hash == bob_request.proof.hash() {
                 // we've already validated this proof and started round 1,
                 // just return the cached commitments
@@ -82,10 +89,7 @@ async fn round_1_signing(
             } else {
                 // this is a new proof, so delete it and allow bob to replace his previous proof
                 // TODO: is this sane?
-                let smart_contract = signing_tasks
-                    .remove(&bob_request.txid)
-                    .unwrap()
-                    .smart_contract;
+                let smart_contract = signing_tasks.remove(&txid).unwrap().smart_contract;
                 Some(smart_contract)
             }
         } else {
@@ -93,27 +97,20 @@ async fn round_1_signing(
         }
     };
 
-    // get bob address from first public input (TODO: move this to validate_request?)
-    let bob_address = bob_request.get_bob_address().map_err(|err| {
-        ErrorObjectOwned::owned(
-            jsonrpsee_types::error::UNKNOWN_ERROR_CODE,
-            "couldn't get bob address:",
-            Some(format!("{err}")),
-        )
-    })?;
-
     // validate request
-    let smart_contract =
-        match validate_request(&context.bitcoin_rpc_ctx, &bob_request, smart_contract).await {
-            Ok(x) => x,
-            Err(err) => {
-                return RpcResult::Err(ErrorObjectOwned::owned(
-                    jsonrpsee_types::error::UNKNOWN_ERROR_CODE,
-                    "the request didn't validate",
-                    Some(format!("{err}")),
-                ))
-            }
-        };
+    let smart_contract = match bob_request
+        .validate_request(&context.bitcoin_rpc_ctx, smart_contract)
+        .await
+    {
+        Ok(x) => x,
+        Err(err) => {
+            return RpcResult::Err(ErrorObjectOwned::owned(
+                jsonrpsee_types::error::UNKNOWN_ERROR_CODE,
+                "the request didn't validate",
+                Some(format!("{err}")),
+            ))
+        }
+    };
 
     // round 1 of FROST
     let rng = &mut thread_rng();
@@ -124,11 +121,11 @@ async fn round_1_signing(
     {
         let mut signing_tasks = context.signing_tasks.write().unwrap();
         signing_tasks.insert(
-            bob_request.txid,
+            txid,
             LocalSigningTask {
                 proof_hash: bob_request.proof.hash(),
                 smart_contract,
-                bob_address,
+                tx: bob_request.tx.clone(),
                 nonces,
             },
         );
@@ -171,7 +168,12 @@ async fn round_2_signing(
     println!("received request: {:?}", round2request);
 
     // retrieve metadata for this task (and prune it)
-    let (bob_address, smart_contract, nonces) = {
+    let LocalSigningTask {
+        proof_hash: _,
+        smart_contract,
+        tx,
+        nonces,
+    } = {
         let mut signing_tasks = context.signing_tasks.write().unwrap();
         if let Some(local_signing_task) = signing_tasks.remove(&round2request.txid) {
             if local_signing_task.proof_hash != round2request.proof_hash {
@@ -182,11 +184,7 @@ async fn round_2_signing(
                 ));
             }
 
-            (
-                local_signing_task.bob_address.clone(),
-                local_signing_task.smart_contract.clone(),
-                local_signing_task.nonces.clone(),
-            )
+            local_signing_task.clone()
         } else {
             return RpcResult::Err(ErrorObjectOwned::owned(
                 jsonrpsee_types::error::UNKNOWN_ERROR_CODE,
@@ -197,8 +195,7 @@ async fn round_2_signing(
     };
 
     // deterministically create transaction
-    let transaction = create_transaction(&smart_contract, round2request.txid, bob_address);
-    let message = get_digest_to_hash(&transaction, &smart_contract);
+    let message = get_digest_to_hash(&tx, &smart_contract);
 
     // sanity check
     if round2request.message != message {

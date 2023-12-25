@@ -21,7 +21,7 @@ use secp256k1::XOnlyPublicKey;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    bob_request::{validate_request, BobRequest, BobResponse},
+    bob_request::{BobRequest, BobResponse},
     constants::{FEE_BITCOIN_SAT, FEE_ZKBITCOIN_SAT, ZKBITCOIN_PUBKEY},
     frost,
     json_rpc_stuff::{json_rpc_request, send_raw_transaction, RpcCtx, TransactionOrHex},
@@ -71,7 +71,9 @@ impl Orchestrator {
         // Validate transaction before forwarding it, and get smart contract
         //
 
-        let smart_contract = validate_request(&self.bitcoin_rpc_ctx, &bob_request, None).await?;
+        let smart_contract = bob_request
+            .validate_request(&self.bitcoin_rpc_ctx, None)
+            .await?;
 
         //
         // Round 1
@@ -118,12 +120,7 @@ impl Orchestrator {
         //
         // Produce transaction and digest
         //
-        let mut transaction = create_transaction(
-            &smart_contract,
-            bob_request.txid,
-            bob_request.get_bob_address()?,
-        );
-        let message = get_digest_to_hash(&transaction, &smart_contract);
+        let message = get_digest_to_hash(&bob_request.tx, &smart_contract);
 
         //
         // Round 2
@@ -132,7 +129,7 @@ impl Orchestrator {
         let mut signature_shares = BTreeMap::new();
 
         let round2_request = Round2Request {
-            txid: bob_request.txid,
+            txid: bob_request.txid()?,
             proof_hash: bob_request.proof.hash(),
             commitments_map: commitments_map.clone(),
             message: message.clone(),
@@ -254,7 +251,13 @@ impl Orchestrator {
         let final_signature = taproot::Signature { sig, hash_ty };
         let mut witness = Witness::new();
         witness.push(final_signature.to_vec());
-        transaction.input[0].witness = witness;
+
+        let mut transaction = bob_request.tx.clone();
+        transaction
+            .input
+            .get_mut(bob_request.zkapp_input)
+            .context("couldn't find zkapp input in transaction")?
+            .witness = witness;
 
         //
         // Broadcast transaction

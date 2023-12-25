@@ -6,8 +6,10 @@ use std::{
 
 use anyhow::{anyhow, bail, ensure, Context, Result};
 use bitcoin::{
-    opcodes::all::OP_RETURN, script::Instruction, Address, Amount, PublicKey, Transaction,
+    opcodes::all::OP_RETURN, script::Instruction, Address, Amount, Denomination, OutPoint,
+    PublicKey, Transaction, Txid,
 };
+use itertools::Itertools;
 use num_bigint::BigUint;
 use serde::{Deserialize, Serialize};
 use sha3::{Digest, Sha3_256};
@@ -15,12 +17,31 @@ use tempdir::TempDir;
 
 use crate::{
     alice_sign_tx::p2tr_script_to,
-    constants::{FEE_BITCOIN_SAT, FEE_ZKBITCOIN_SAT, MINIMUM_CONFIRMATIONS, ZKBITCOIN_PUBKEY},
+    constants::{
+        FEE_BITCOIN_SAT, FEE_ZKBITCOIN_SAT, MINIMUM_CONFIRMATIONS, ZKBITCOIN_FEE_PUBKEY,
+        ZKBITCOIN_PUBKEY,
+    },
     get_network,
     json_rpc_stuff::json_rpc_request,
     zkp::verify_proof,
 };
 use crate::{json_rpc_stuff::RpcCtx, plonk};
+
+fn string_to_amount(amount: &str) -> Result<Amount> {
+    // TODO: need to write a test here, once we have tested this we need to figure out which one to keep :D
+    let big = BigUint::from_str(amount).context("amount is not a u64 (err_code: 1)")?;
+    let big_u64s = big.to_u64_digits();
+    ensure!(big_u64s.len() == 1, "amount is not a u64 (err_code: 2)");
+    let u64res = amount
+        .parse::<u64>()
+        .context("amount is not a u64 (err_code: 3)")?;
+    ensure!(big_u64s[0] == u64res, "amount is not a u64 (err_code: 4)");
+    let res = Amount::from_sat(u64res);
+    let res2 = Amount::from_str_in(amount, Denomination::Satoshi)?;
+    assert_eq!(res, res2);
+
+    Ok(res)
+}
 
 //
 // Bob's side: form a request and send it to an endpoint
@@ -29,12 +50,13 @@ use crate::{json_rpc_stuff::RpcCtx, plonk};
 /// A request from Bob to unlock funds from a smart contract should look like this.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BobRequest {
-    /// Bob's address. This is insecure and we should move it to the public inputs.
-    // TODO: move this to public input.
-    pub bob_address: String,
+    /// The transaction authenticated by the proof, and that Bob wants to sign.
+    /// This transaction should contain the zkapp as input, and a fee as output.
+    /// It might also contain a new zkapp as output, in case the input zkapp was stateful.
+    pub tx: Transaction,
 
-    /// The transaction ID that deployed the smart contract.
-    pub txid: bitcoin::Txid,
+    /// The index of the input that contains the zkapp being used.
+    pub zkapp_input: usize,
 
     /// The verifier key authenticated by the deployed transaction.
     pub vk: plonk::VerifierKey,
@@ -47,35 +69,158 @@ pub struct BobRequest {
 }
 
 impl BobRequest {
-    // TODO: does an address fit in a public input/field element?
-    pub fn get_bob_address(&self) -> Result<Address> {
-        let address = Address::from_str(&self.bob_address)?.require_network(get_network())?;
-        Ok(address)
-        // if self.public_inputs.len() < 1 {
-        //     bail!("public input should at least be of size 1 (as first public input is bob's address)");
-        // }
-
-        // let address_str = &self.public_inputs[0];
-        // let bob_pubkey = bitcoin::PublicKey::from_slice(todo!());
-        // let bob_address = bitcoin::Address::from_str(address_str)
-        //     .context("failed to deserialize the first public input as a bitcoin address")?;
-        // let bob_address = bob_address.require_network(get_network()).context({
-        //     "network of bitcoin address needs to be testnet or bitcoin (depending on cfg)"
-        // })?;
-
-        // Ok(bob_address)
+    /// This should only be called on stateful smart contracts.
+    fn amount_in(&self, state_len: usize) -> Result<Amount> {
+        let offset = state_len * 2 + 1 /* txid */ + 1 /* amount_out */;
+        let amount_in = self
+            .public_inputs
+            .get(offset)
+            .context("can't find amount_in in public inputs")?;
+        string_to_amount(amount_in)
     }
 
-    pub fn get_hash_bob_address(&self) -> Result<Vec<u8>> {
-        // TODO: maybe we want to be in a world where Bob can give us a script pubkey directly? (instead of an address)
-        let bob_address = self.get_bob_address()?;
-        let bob_address = bob_address.script_pubkey();
-        let bob_address = bob_address.to_bytes();
+    /// This should only be called on stateful smart contracts.
+    fn amount_out(&self, state_len: usize) -> Result<Amount> {
+        let offset = state_len * 2 + 1 /* txid */;
+        let amount_in = self
+            .public_inputs
+            .get(offset)
+            .context("can't find amount_in in public inputs")?;
+        string_to_amount(amount_in)
+    }
 
-        let mut hasher = Sha3_256::new();
-        hasher.update(bob_address);
-        let res = hasher.finalize().to_vec();
-        Ok(res)
+    /// The transaction ID and output index of the zkapp used in the request.
+    fn zkapp_outpoint(&self) -> Result<OutPoint> {
+        let txin = self
+            .tx
+            .input
+            .get(self.zkapp_input)
+            .context("the transaction ID that was passed in the request does not exist")?;
+        Ok(txin.previous_output)
+        // TODO: do we care about other fields in txin and previous_output?
+    }
+
+    pub fn txid(&self) -> Result<Txid> {
+        Ok(self.zkapp_outpoint()?.txid)
+    }
+
+    fn new_state(&self, state_len: usize) -> Result<&[String]> {
+        self.public_inputs
+            .get(state_len..state_len * 2)
+            .context("can't find updated state in public inputs")
+    }
+
+    /// Validate the unsigned transaction contained in Bob's request.
+    /// It checks outputs, but not inputs.
+    /// The caller will be in charge of retrieving the smart contract and verifying its execution.
+    async fn validate_transaction(
+        &self,
+        ctx: &RpcCtx,
+        smart_contract: &SmartContract,
+    ) -> Result<()> {
+        // it must contain an output fee paid to zkBitcoinFund
+        self.tx
+            .output
+            .iter()
+            .find(|x| {
+                x.script_pubkey
+                    == p2tr_script_to(PublicKey::from_str(ZKBITCOIN_FEE_PUBKEY).unwrap())
+            })
+            .context("the transaction does not contain an output fee paid to zkBitcoinFund")?;
+
+        if smart_contract.is_stateful() {
+            // if the zkapp is stateful, it must also produce a new stateful zkapp as output
+            let zkbitcoin_pubkey: PublicKey = PublicKey::from_str(ZKBITCOIN_PUBKEY).unwrap();
+            let new_zkapp = extract_smart_contract_from_tx(&self.tx, &zkbitcoin_pubkey)
+                .context("the transaction does not contain a new stateful zkapp as output")?;
+
+            // it contains the same VK
+            ensure!(
+                new_zkapp.vk_hash == smart_contract.vk_hash,
+                "the updated zkapp is not the same as the previous zkapp"
+            );
+
+            // it contains the correct new state
+            let state_len = smart_contract.state_len();
+            let new_state = self.new_state(state_len)?;
+            let new_state_bytes = new_state
+                .iter()
+                .map(|x| x.as_bytes().to_vec())
+                .collect_vec();
+            ensure!(
+                new_zkapp.public_inputs == new_state_bytes,
+                "the updated zkapp does not contain the correct new state"
+            );
+
+            // ensure that it contains the correct locked value after withdrawl and funding
+            let new_value = new_zkapp.locked_value;
+            let expected_value = smart_contract.updated_value(self)?;
+            ensure!(expected_value == new_value, "the updated zkapp does not contain the correct locked value after withdrawl and funding");
+        }
+
+        //
+        Ok(())
+    }
+
+    /// Validates a request received from Bob.
+    pub async fn validate_request(
+        &self,
+        ctx: &RpcCtx,
+        smart_contract: Option<SmartContract>,
+    ) -> Result<SmartContract> {
+        // fetch the smart contract if not given
+        let smart_contract = if let Some(x) = smart_contract {
+            x
+        } else {
+            fetch_smart_contract(ctx, self.txid()?).await?
+        };
+
+        // validate the unsigned transaction
+        self.validate_transaction(ctx, &smart_contract).await?;
+
+        // ensure that the hash of the VK correctly gives us the vk_hash
+        ensure!(
+            smart_contract.vk_hash[..] == self.vk.hash(),
+            "VK does not match the VK hash in the smart contract"
+        );
+
+        // ensure that the vk makes sense with public inputs that are fixed
+        ensure!(smart_contract.public_inputs.len() <= self.vk.nPublic,"number of public inputs that are fixed is greater than the number of public inputs in the vk");
+
+        // retrieve amount to be moved
+        if smart_contract.is_stateful() {
+            // ensure that the smart contract expects the correct number of public inputs
+            let expected_len = smart_contract.public_inputs.len() * 2 /* prev state + new state */ + 1 /* truncated hash of bob address */ + 1 /* amount */;
+            ensure!(
+                self.vk.nPublic == expected_len,
+                "the smart contract is malformed"
+            );
+
+            // ensure that number public inputs == vk.num_public_inputs
+            ensure!(
+                self.vk.nPublic == self.public_inputs.len(),
+                "number of public input don't match"
+            );
+
+            // ensure that the public input (prefix) matches what's on chain
+            // any other public input is decided by Bob (the prover)
+            // TODO: we should get that from the smart contract instead of getting it from Bob's
+            for (pi1, pi2) in smart_contract.public_inputs.iter().zip(&self.public_inputs) {
+                println!("pi1: {:?}", pi1);
+                println!("pi2: {:?}", pi2);
+                println!("pi2 as bytes: {:?}", pi2.as_bytes());
+                ensure!(pi1 == pi2.as_bytes(), "public inputs don't match");
+            }
+        }
+
+        // ensure that there's enough funds remaining to cover for bitcoin and zkBitcoin fee
+        smart_contract.check_remaining_funds(&self)?;
+
+        // verify proof using snarkjs
+        verify_proof(&self)?;
+
+        //
+        Ok(smart_contract)
     }
 }
 
@@ -127,6 +272,22 @@ pub struct SmartContract {
 }
 
 impl SmartContract {
+    fn state_len(&self) -> usize {
+        self.public_inputs.len()
+    }
+
+    fn updated_value(&self, request: &BobRequest) -> Result<Amount> {
+        ensure!(
+            self.is_stateful(),
+            "smart contract is stateless, so has no new value"
+        );
+        let state_len = self.state_len();
+        let amount_in = request.amount_in(state_len)?;
+        let amount_out = request.amount_out(state_len)?;
+        let res = self.locked_value + amount_in - amount_out;
+        Ok(res)
+    }
+
     /// Returns true if the smart contract is stateless.
     fn is_stateless(&self) -> bool {
         // a stateless contract expects no public input
@@ -347,79 +508,6 @@ pub async fn fetch_smart_contract(ctx: &RpcCtx, txid: bitcoin::Txid) -> Result<S
     extract_smart_contract_from_tx(&transaction, &zkbitcoin_pubkey)
 }
 
-/// Validates a request received from Bob.
-pub async fn validate_request(
-    ctx: &RpcCtx,
-    request: &BobRequest,
-    smart_contract: Option<SmartContract>,
-) -> Result<SmartContract> {
-    // fetch the smart contract if not given
-    let smart_contract = if let Some(x) = smart_contract {
-        x
-    } else {
-        fetch_smart_contract(ctx, request.txid).await?
-    };
-
-    // ensure that the hash of the VK correctly gives us the vk_hash
-    ensure!(
-        smart_contract.vk_hash[..] == request.vk.hash(),
-        "VK does not match the VK hash in the smart contract"
-    );
-
-    // ensure that the vk makes sense with public inputs that are fixed
-    ensure!(smart_contract.public_inputs.len() <= request.vk.nPublic,"number of public inputs that are fixed is greater than the number of public inputs in the vk");
-
-    // retrieve amount to be moved
-    if smart_contract.is_stateful() {
-        // ensure that the smart contract expects the correct number of public inputs
-        let expected_len = smart_contract.public_inputs.len() * 2 /* prev state + new state */ + 1 /* truncated hash of bob address */ + 1 /* amount */;
-        ensure!(
-            request.vk.nPublic == expected_len,
-            "the smart contract is malformed"
-        );
-
-        // ensure that number public inputs == vk.num_public_inputs
-        ensure!(
-            request.vk.nPublic == request.public_inputs.len(),
-            "number of public input don't match"
-        );
-
-        // ensure that the public input (prefix) matches what's on chain
-        // any other public input is decided by Bob (the prover)
-        // TODO: we should get that from the smart contract instead of getting it from Bob's
-        for (pi1, pi2) in smart_contract
-            .public_inputs
-            .iter()
-            .zip(&request.public_inputs)
-        {
-            println!("pi1: {:?}", pi1);
-            println!("pi2: {:?}", pi2);
-            println!("pi2 as bytes: {:?}", pi2.as_bytes());
-            ensure!(pi1 == pi2.as_bytes(), "public inputs don't match");
-        }
-
-        // withdraw-related public inputs
-        let len_state = smart_contract.public_inputs.len();
-        // TODO: we should derive that hashed address ourselves instead of receiving it from Bob
-        let address_offset = len_state * 2;
-        let hashed_bob_address = &request.public_inputs[address_offset];
-        let expected = request.get_hash_bob_address()?;
-        ensure!(
-            hashed_bob_address.as_bytes() == expected,
-            "Bob's address should match the truncated digest present in the public inputs given"
-        );
-    }
-
-    // ensure that there's enough funds remaining to cover for bitcoin and zkBitcoin fee
-    smart_contract.check_remaining_funds(&request)?;
-
-    // verify proof using snarkjs
-    verify_proof(&request)?;
-
-    //
-    Ok(smart_contract)
-}
-
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
@@ -471,10 +559,13 @@ mod tests {
             prev_outs: vec![],
         };
 
+        // create bob tx
+        let tx = todo!();
+
         // create bob request
         let bob_request = BobRequest {
-            bob_address: "".to_string(),
-            txid: bitcoin::Txid::all_zeros(),
+            tx,
+            zkapp_input: 0,
             vk,
             proof,
             public_inputs: public_inputs.0,
@@ -483,7 +574,8 @@ mod tests {
         // try to validate the request
         let ctx = RpcCtx::for_testing();
 
-        validate_request(&ctx, &bob_request, Some(smart_contract))
+        bob_request
+            .validate_request(&ctx, Some(smart_contract))
             .await
             .unwrap();
     }
