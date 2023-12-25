@@ -32,11 +32,13 @@ pub async fn generate_and_broadcast_transaction(
     let (_tx, tx_hex) = {
         let mut outputs = vec![];
         // first output is a P2PK to 0xzkBitcoin
-        let zkbitcoin_pubkey: PublicKey = PublicKey::from_str(ZKBITCOIN_PUBKEY).unwrap();
-        outputs.push(TxOut {
-            value: Amount::from_sat(satoshi_amount),
-            script_pubkey: p2tr_script_to(zkbitcoin_pubkey),
-        });
+        {
+            let zkbitcoin_pubkey: PublicKey = PublicKey::from_str(ZKBITCOIN_PUBKEY).unwrap();
+            outputs.push(TxOut {
+                value: Amount::from_sat(satoshi_amount),
+                script_pubkey: p2tr_script_to(zkbitcoin_pubkey),
+            });
+        }
 
         // second output is VK
         {
@@ -47,19 +49,29 @@ pub async fn generate_and_broadcast_transaction(
                 script_pubkey,
             });
         }
-        // other outputs are fixed public inputs (for now we don't support that)
-        /*
-        for pi in public_inputs {
-            let thing: &bitcoin::script::PushBytes = pi.as_bytes().try_into().unwrap();
-            let script_pubkey = ScriptBuf::new_op_return(thing);
-            let value = script_pubkey.dust_value();
-            outputs.push(TxOut {
-                value,
-                script_pubkey,
-            });
-        }
-        */
 
+        // other outputs are the initial state (for statefull zkapps)
+        {
+            if !public_inputs.is_empty() {
+                println!(
+                    "- stateful zkapp detected (with {} public inputs)",
+                    public_inputs.len()
+                );
+            } else {
+                println!("- stateless zkapp detected");
+            }
+            for pi in public_inputs {
+                let thing: &bitcoin::script::PushBytes = pi.as_bytes().try_into().unwrap();
+                let script_pubkey = ScriptBuf::new_op_return(thing);
+                let value = script_pubkey.dust_value();
+                outputs.push(TxOut {
+                    value,
+                    script_pubkey,
+                });
+            }
+        }
+
+        // build tx
         let tx = Transaction {
             version: Version::TWO,
             lock_time: LockTime::ZERO, // no lock time

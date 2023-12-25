@@ -69,7 +69,7 @@ pub fn create_transaction(
         vec![input]
     };
 
-    // we need to subtract the amount  to cover for the fee
+    // we need to subtract the amount to cover for the fee
     let amount_for_bob =
         amount - Amount::from_sat(fee_bitcoin_sat) - Amount::from_sat(fee_zkbitcoin_sat);
 

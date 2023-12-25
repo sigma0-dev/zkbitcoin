@@ -4,16 +4,18 @@ use std::{
     str::FromStr,
 };
 
-use anyhow::{bail, ensure, Context, Result};
+use anyhow::{anyhow, bail, ensure, Context, Result};
 use bitcoin::{
     opcodes::all::OP_RETURN, script::Instruction, Address, Amount, PublicKey, Transaction,
 };
+use num_bigint::BigUint;
 use serde::{Deserialize, Serialize};
+use sha3::{Digest, Sha3_256};
 use tempdir::TempDir;
 
 use crate::{
     alice_sign_tx::p2tr_script_to,
-    constants::{MINIMUM_CONFIRMATIONS, ZKBITCOIN_PUBKEY},
+    constants::{FEE_BITCOIN_SAT, FEE_ZKBITCOIN_SAT, MINIMUM_CONFIRMATIONS, ZKBITCOIN_PUBKEY},
     get_network,
     json_rpc_stuff::json_rpc_request,
 };
@@ -62,6 +64,18 @@ impl BobRequest {
 
         // Ok(bob_address)
     }
+
+    pub fn get_hash_bob_address(&self) -> Result<Vec<u8>> {
+        // TODO: maybe we want to be in a world where Bob can give us a script pubkey directly? (instead of an address)
+        let bob_address = self.get_bob_address()?;
+        let bob_address = bob_address.script_pubkey();
+        let bob_address = bob_address.to_bytes();
+
+        let mut hasher = Sha3_256::new();
+        hasher.update(bob_address);
+        let res = hasher.finalize().to_vec();
+        Ok(res)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -109,6 +123,87 @@ pub struct SmartContract {
     /// _All_ the outputs of the deploy transaction.
     /// (needed to sign a transaction to unlock the funds).
     pub prev_outs: Vec<bitcoin::TxOut>,
+}
+
+impl SmartContract {
+    /// Returns true if the smart contract is stateless.
+    fn is_stateless(&self) -> bool {
+        // a stateless contract expects no public input
+        self.public_inputs.is_empty()
+    }
+
+    /// Returns true if the smart contract is stateful.
+    fn is_stateful(&self) -> bool {
+        !self.is_stateless()
+    }
+
+    /// Returns the amount that is being withdrawn from the smart contract, and the remaining amount in the contract (0 if stateless).
+    fn calculate_split_funds(&self, request: &BobRequest) -> Result<(Amount, Amount)> {
+        if self.is_stateless() {
+            return Ok((self.locked_value, Amount::from_sat(0)));
+        }
+
+        let len_state = self.public_inputs.len();
+        let amount_offset = len_state * 2 + 1;
+        let zero = "0".to_string();
+        let amount = request.public_inputs.get(amount_offset).unwrap_or(&zero);
+
+        let bob_amount = {
+            // TODO: need to write a test here
+            let big = BigUint::from_str(amount).context("amount is not a u64 (err_code: 1)")?;
+            let big_u64s = big.to_u64_digits();
+            ensure!(big_u64s.len() == 1, "amount is not a u64 (err_code: 2)");
+            let u64res = amount
+                .parse::<u64>()
+                .context("amount is not a u64 (err_code: 3)")?;
+            ensure!(big_u64s[0] == u64res, "amount is not a u64 (err_code: 4)");
+            Amount::from_sat(u64res)
+        };
+
+        let remaining = self.locked_value - bob_amount;
+
+        Ok((bob_amount, remaining))
+    }
+
+    fn check_remaining_funds(&self, request: &BobRequest) -> Result<()> {
+        // TODO: bitcoin fee shouldn't be a constant
+        // TODO: use https://crates.io/crates/bitcoin-fees or https://lib.rs/crates/bitcoinwallet-fees
+        let fees = Amount::from_sat(FEE_BITCOIN_SAT) + Amount::from_sat(FEE_ZKBITCOIN_SAT);
+
+        let remaining = if self.is_stateless() {
+            self.locked_value
+        } else {
+            let len_state = self.public_inputs.len();
+            let amount_offset = len_state * 2 + 1;
+            let zero = "0".to_string();
+            let amount = request.public_inputs.get(amount_offset).unwrap_or(&zero);
+            let bob_amount = {
+                // TODO: need to write a test here
+                let big = BigUint::from_str(amount).context("amount is not a u64 (err_code: 1)")?;
+                let big_u64s = big.to_u64_digits();
+                ensure!(big_u64s.len() == 1, "amount is not a u64 (err_code: 2)");
+                let u64res = amount
+                    .parse::<u64>()
+                    .context("amount is not a u64 (err_code: 3)")?;
+                ensure!(big_u64s[0] == u64res, "amount is not a u64 (err_code: 4)");
+                Amount::from_sat(u64res)
+            };
+
+            ensure!(
+                self.locked_value >= bob_amount,
+                "there is not enough funds in the zkapp to cover for the withdrawal amount"
+            );
+
+            self.locked_value - bob_amount
+        };
+
+        ensure!(
+            remaining > fees,
+            "there is not enough funds in the zkapp to cover for bitcoin and zkBitcoin fees"
+        );
+
+        Ok(())
+    }
 }
 
 pub fn parse_op_return_data(script: &bitcoin::ScriptBuf) -> Result<Vec<u8>> {
@@ -264,33 +359,58 @@ pub async fn validate_request(
         fetch_smart_contract(ctx, request.txid).await?
     };
 
-    // ensure that the vk makes sense with public input that are fixed
-    ensure!(smart_contract.public_inputs.len() <= request.vk.nPublic,"number of public inputs that are fixed is greater than the number of public inputs in the vk");
-
-    // ensure that number public inputs <= vk.num_public_inputs
-    ensure!(
-        request.vk.nPublic == request.public_inputs.len(),
-        "number of public input don't match"
-    );
-
     // ensure that the hash of the VK correctly gives us the vk_hash
     ensure!(
         smart_contract.vk_hash[..] == request.vk.hash(),
         "VK does not match the VK hash in the smart contract"
     );
 
-    // ensure that the public input (prefix) matches what's on chain
-    // any other public input is decided by Bob (the prover)
-    for (pi1, pi2) in smart_contract
-        .public_inputs
-        .iter()
-        .zip(&request.public_inputs)
-    {
-        println!("pi1: {:?}", pi1);
-        println!("pi2: {:?}", pi2);
-        println!("pi2 as bytes: {:?}", pi2.as_bytes());
-        ensure!(pi1 == pi2.as_bytes(), "public inputs don't match");
+    // ensure that the vk makes sense with public inputs that are fixed
+    ensure!(smart_contract.public_inputs.len() <= request.vk.nPublic,"number of public inputs that are fixed is greater than the number of public inputs in the vk");
+
+    // retrieve amount to be moved
+    if smart_contract.is_stateful() {
+        // ensure that the smart contract expects the correct number of public inputs
+        let expected_len = smart_contract.public_inputs.len() * 2 /* prev state + new state */ + 1 /* truncated hash of bob address */ + 1 /* amount */;
+        ensure!(
+            request.vk.nPublic == expected_len,
+            "the smart contract is malformed"
+        );
+
+        // ensure that number public inputs == vk.num_public_inputs
+        ensure!(
+            request.vk.nPublic == request.public_inputs.len(),
+            "number of public input don't match"
+        );
+
+        // ensure that the public input (prefix) matches what's on chain
+        // any other public input is decided by Bob (the prover)
+        // TODO: we should get that from the smart contract instead of getting it from Bob's
+        for (pi1, pi2) in smart_contract
+            .public_inputs
+            .iter()
+            .zip(&request.public_inputs)
+        {
+            println!("pi1: {:?}", pi1);
+            println!("pi2: {:?}", pi2);
+            println!("pi2 as bytes: {:?}", pi2.as_bytes());
+            ensure!(pi1 == pi2.as_bytes(), "public inputs don't match");
+        }
+
+        // withdraw-related public inputs
+        let len_state = smart_contract.public_inputs.len();
+        // TODO: we should derive that hashed address ourselves instead of receiving it from Bob
+        let address_offset = len_state * 2;
+        let hashed_bob_address = &request.public_inputs[address_offset];
+        let expected = request.get_hash_bob_address()?;
+        ensure!(
+            hashed_bob_address.as_bytes() == expected,
+            "Bob's address should match the truncated digest present in the public inputs given"
+        );
     }
+
+    // ensure that there's enough funds remaining to cover for bitcoin and zkBitcoin fee
+    smart_contract.check_remaining_funds(&request)?;
 
     // write vk, inputs, proof to file
     let tmp_dir = TempDir::new("zkbitcoin_").expect("couldn't create tmp dir");
@@ -308,20 +428,22 @@ pub async fn validate_request(
     serde_json::to_writer(&mut tmp_file, &request.vk).expect("write failed");
 
     // verify proof using snarkjs
-    let output = Command::new("snarkjs")
-        .current_dir(&tmp_dir)
-        .arg("plonk")
-        .arg("verify")
-        .arg("verification_key.json")
-        .arg("public_inputs.json")
-        .arg("proof.json")
-        .output()
-        .expect("failed to execute process");
+    {
+        let output = Command::new("snarkjs")
+            .current_dir(&tmp_dir)
+            .arg("plonk")
+            .arg("verify")
+            .arg("verification_key.json")
+            .arg("public_inputs.json")
+            .arg("proof.json")
+            .output()
+            .expect("failed to execute process");
 
-    println!("{}", String::from_utf8_lossy(&output.stdout));
+        println!("{}", String::from_utf8_lossy(&output.stdout));
 
-    if !output.status.success() {
-        bail!("failed to verify proof");
+        if !output.status.success() {
+            bail!("failed to verify proof");
+        }
     }
 
     // clean up

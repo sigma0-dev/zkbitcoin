@@ -21,6 +21,7 @@ jsonrpsee = { version = "0.20.3", features = ["server"] }
 jsonrpsee-core = "0.20.3"
 jsonrpsee-http-server = "0.15.1"
 jsonrpsee-types = "0.20.3"
+num-bigint = "0.4.4"
 rand = "0.8.5"
 rand_chacha = "0.3.1"
 reqwest = "0.11"
