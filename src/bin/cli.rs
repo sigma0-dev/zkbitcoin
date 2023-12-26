@@ -1,6 +1,7 @@
 use std::{path::PathBuf, str::FromStr};
 
 use anyhow::{Context, Result};
+use bitcoin::{absolute::LockTime, transaction::Version, Transaction};
 use clap::{Parser, Subcommand};
 use zkbitcoin::{
     alice_sign_tx::generate_and_broadcast_transaction,
@@ -259,14 +260,32 @@ async fn main() -> Result<()> {
                 vec![]
             };
 
+            // create a transaction to spend that input
+            let tx = {
+                let mut inputs = vec![];
+                let mut outputs = vec![];
+
+                Transaction {
+                    version: Version::TWO,
+                    lock_time: LockTime::ZERO, // no lock time
+                    input: inputs,
+                    output: outputs,
+                }
+            };
+            //bob_address: recipient_address.clone(),
+            //txid: bitcoin::Txid::from_str(txid).unwrap()
+
             // create bob request
             let bob_request = zkbitcoin::bob_request::BobRequest {
-                bob_address: recipient_address.clone(),
-                txid: bitcoin::Txid::from_str(txid).unwrap(),
+                tx,
+                zkapp_input: 0,
                 vk,
                 proof,
-                public_inputs: public_inputs,
+                public_inputs,
             };
+
+            // fund it using BITCOIN RPC
+            todo!();
 
             // send bob's request to the MPC committee.
             // TODO: we need a coordinator.

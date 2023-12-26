@@ -98,4 +98,3 @@ so if we're not passing anything it should detect the special serialization... s
 Turns out I believe there's a bug in the lib we're using https://github.com/rust-bitcoin/rust-bitcoin/pull/2239
 
 > Note: one recommendation seems to be using PSBT instead of raw transactions.
-> 

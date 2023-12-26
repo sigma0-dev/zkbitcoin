@@ -4,7 +4,6 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use anyhow::Error;
 use bitcoin::{Transaction, Txid};
 use frost_secp256k1_tr::round1;
 use jsonrpsee::{
@@ -18,10 +17,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     bob_request::{BobRequest, BobResponse, SmartContract},
-    constants::{FEE_BITCOIN_SAT, FEE_ZKBITCOIN_SAT},
     frost,
     json_rpc_stuff::RpcCtx,
-    mpc_sign_tx::{create_transaction, get_digest_to_hash},
+    mpc_sign_tx::get_digest_to_hash,
 };
 
 //

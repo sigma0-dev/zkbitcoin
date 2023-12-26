@@ -1,19 +1,14 @@
-use std::{
-    fs::{remove_dir_all, File},
-    process::Command,
-    str::FromStr,
-};
+use std::str::FromStr;
 
-use anyhow::{anyhow, bail, ensure, Context, Result};
+use anyhow::{bail, ensure, Context, Result};
 use bitcoin::{
-    opcodes::all::OP_RETURN, script::Instruction, Address, Amount, Denomination, OutPoint,
-    PublicKey, Transaction, Txid,
+    absolute::LockTime, opcodes::all::OP_RETURN, script::Instruction, transaction::Version,
+    Address, Amount, Denomination, OutPoint, PublicKey, Script, ScriptBuf, Sequence, Transaction,
+    TxIn, TxOut, Txid, Witness,
 };
 use itertools::Itertools;
 use num_bigint::BigUint;
 use serde::{Deserialize, Serialize};
-use sha3::{Digest, Sha3_256};
-use tempdir::TempDir;
 
 use crate::{
     alice_sign_tx::p2tr_script_to,
@@ -21,11 +16,24 @@ use crate::{
         FEE_BITCOIN_SAT, FEE_ZKBITCOIN_SAT, MINIMUM_CONFIRMATIONS, ZKBITCOIN_FEE_PUBKEY,
         ZKBITCOIN_PUBKEY,
     },
-    get_network,
     json_rpc_stuff::json_rpc_request,
-    zkp::verify_proof,
+    snarkjs::verify_proof,
 };
 use crate::{json_rpc_stuff::RpcCtx, plonk};
+
+// note to self:
+//
+// the flow from Bob will be:
+// 1. create the transaction that uses zkapp, if it's stateless it's easy, if it's stateful we need the following vars:
+//   - prev_state = zkapp.public_inputs
+//   - truncated_txid = truncate(hash(txid))
+//   - amount_out = hint
+//   - amount_in = hint
+// 2. create the proof and produce new_state as well as full public inputs
+
+//
+// Helpers
+//
 
 fn string_to_amount(amount: &str) -> Result<Amount> {
     // TODO: need to write a test here, once we have tested this we need to figure out which one to keep :D
@@ -69,6 +77,101 @@ pub struct BobRequest {
 }
 
 impl BobRequest {
+    async fn new(
+        rpc_ctx: &RpcCtx,
+        bob_address: Address,
+        txid: bitcoin::Txid, // of zkapp
+        vk: plonk::VerifierKey,
+        proof: plonk::Proof,
+        public_inputs: Vec<String>,
+    ) -> Result<Self> {
+        let tx = {
+            ensure!(
+                vk.nPublic == public_inputs.len(),
+                "sanity check failed: the verifier key does not match the public inputs given"
+            );
+            let mut inputs = vec![];
+
+            // fetch smart contract we want to use
+            let smart_contract = fetch_smart_contract(&rpc_ctx, txid).await?;
+
+            // first input is the zkapp being used
+            {
+                inputs.push(TxIn {
+                    previous_output: OutPoint {
+                        txid,
+                        vout: smart_contract.vout_of_zkbitcoin_utxo,
+                    },
+                    script_sig: ScriptBuf::new(),
+                    sequence: Sequence::MAX,
+                    witness: Witness::new(),
+                });
+            }
+
+            let mut outputs = vec![];
+
+            // first output is to zkBitcoinFund
+            {
+                let zkbitcoin_pubkey: PublicKey =
+                    PublicKey::from_str(ZKBITCOIN_FEE_PUBKEY).unwrap();
+                outputs.push(TxOut {
+                    value: Amount::from_sat(FEE_ZKBITCOIN_SAT),
+                    script_pubkey: p2tr_script_to(zkbitcoin_pubkey),
+                });
+            }
+
+            // second output is to ourselves
+            {
+                let script_pubkey = bob_address.script_pubkey();
+                let value = if smart_contract.is_stateful() {
+                    let amount = public_inputs.get(state_len)
+                } else {
+                    smart_contract.locked_value - ZKBITCOIN_FEE_PUBKEY
+                };
+                outputs.push(TxOut {
+                    value,
+                    script_pubkey,
+                });
+            }
+
+            // if it's a stateful zkapp, we need to add a new zkapp as output
+            if smart_contract.stateful() {
+                outputs.push(TxOut {
+                    value: Amount::from_sat(0),
+                    script_pubkey: p2tr_script_to(vk.to_public_key()),
+                })
+            }
+
+            Transaction {
+                version: Version::TWO,
+                lock_time: LockTime::ZERO, // no lock time
+                input: inputs,
+                output: outputs,
+            }
+        };
+
+        let res = Self {
+            tx,
+            zkapp_input: 0,
+            vk,
+            proof,
+            public_inputs,
+        };
+        Ok(res)
+    }
+
+    fn new_state(&self, state_len: usize) -> Result<&[String]> {
+        self.public_inputs
+            .get(0..state_len)
+            .context("can't find previous state in public inputs")
+    }
+
+    fn prev_state(&self, state_len: usize) -> Result<&[String]> {
+        self.public_inputs
+            .get(state_len..state_len * 2)
+            .context("can't find previous state in public inputs")
+    }
+
     /// This should only be called on stateful smart contracts.
     fn amount_in(&self, state_len: usize) -> Result<Amount> {
         let offset = state_len * 2 + 1 /* txid */ + 1 /* amount_out */;
@@ -104,20 +207,10 @@ impl BobRequest {
         Ok(self.zkapp_outpoint()?.txid)
     }
 
-    fn new_state(&self, state_len: usize) -> Result<&[String]> {
-        self.public_inputs
-            .get(state_len..state_len * 2)
-            .context("can't find updated state in public inputs")
-    }
-
     /// Validate the unsigned transaction contained in Bob's request.
     /// It checks outputs, but not inputs.
     /// The caller will be in charge of retrieving the smart contract and verifying its execution.
-    async fn validate_transaction(
-        &self,
-        ctx: &RpcCtx,
-        smart_contract: &SmartContract,
-    ) -> Result<()> {
+    fn validate_transaction(&self, smart_contract: &SmartContract) -> Result<()> {
         // it must contain an output fee paid to zkBitcoinFund
         self.tx
             .output
@@ -176,7 +269,7 @@ impl BobRequest {
         };
 
         // validate the unsigned transaction
-        self.validate_transaction(ctx, &smart_contract).await?;
+        self.validate_transaction(&smart_contract)?;
 
         // ensure that the hash of the VK correctly gives us the vk_hash
         ensure!(
@@ -202,10 +295,14 @@ impl BobRequest {
                 "number of public input don't match"
             );
 
-            // ensure that the public input (prefix) matches what's on chain
-            // any other public input is decided by Bob (the prover)
-            // TODO: we should get that from the smart contract instead of getting it from Bob's
-            for (pi1, pi2) in smart_contract.public_inputs.iter().zip(&self.public_inputs) {
+            // ensure that the previous state used is correctly used
+            // TODO: we don't need Bob to send us that information
+            let state_len = smart_contract.state_len();
+            for (pi1, pi2) in smart_contract
+                .public_inputs
+                .iter()
+                .zip(self.prev_state(state_len)?)
+            {
                 println!("pi1: {:?}", pi1);
                 println!("pi2: {:?}", pi2);
                 println!("pi2 as bytes: {:?}", pi2.as_bytes());
@@ -300,32 +397,32 @@ impl SmartContract {
     }
 
     /// Returns the amount that is being withdrawn from the smart contract, and the remaining amount in the contract (0 if stateless).
-    fn calculate_split_funds(&self, request: &BobRequest) -> Result<(Amount, Amount)> {
-        if self.is_stateless() {
-            return Ok((self.locked_value, Amount::from_sat(0)));
-        }
+    // fn calculate_split_funds(&self, request: &BobRequest) -> Result<(Amount, Amount)> {
+    //     if self.is_stateless() {
+    //         return Ok((self.locked_value, Amount::from_sat(0)));
+    //     }
 
-        let len_state = self.public_inputs.len();
-        let amount_offset = len_state * 2 + 1;
-        let zero = "0".to_string();
-        let amount = request.public_inputs.get(amount_offset).unwrap_or(&zero);
+    //     let len_state = self.public_inputs.len();
+    //     let amount_offset = len_state * 2 + 1;
+    //     let zero = "0".to_string();
+    //     let amount = request.public_inputs.get(amount_offset).unwrap_or(&zero);
 
-        let bob_amount = {
-            // TODO: need to write a test here
-            let big = BigUint::from_str(amount).context("amount is not a u64 (err_code: 1)")?;
-            let big_u64s = big.to_u64_digits();
-            ensure!(big_u64s.len() == 1, "amount is not a u64 (err_code: 2)");
-            let u64res = amount
-                .parse::<u64>()
-                .context("amount is not a u64 (err_code: 3)")?;
-            ensure!(big_u64s[0] == u64res, "amount is not a u64 (err_code: 4)");
-            Amount::from_sat(u64res)
-        };
+    //     let bob_amount = {
+    //         // TODO: need to write a test here
+    //         let big = BigUint::from_str(amount).context("amount is not a u64 (err_code: 1)")?;
+    //         let big_u64s = big.to_u64_digits();
+    //         ensure!(big_u64s.len() == 1, "amount is not a u64 (err_code: 2)");
+    //         let u64res = amount
+    //             .parse::<u64>()
+    //             .context("amount is not a u64 (err_code: 3)")?;
+    //         ensure!(big_u64s[0] == u64res, "amount is not a u64 (err_code: 4)");
+    //         Amount::from_sat(u64res)
+    //     };
 
-        let remaining = self.locked_value - bob_amount;
+    //     let remaining = self.locked_value - bob_amount;
 
-        Ok((bob_amount, remaining))
-    }
+    //     Ok((bob_amount, remaining))
+    // }
 
     fn check_remaining_funds(&self, request: &BobRequest) -> Result<()> {
         // TODO: bitcoin fee shouldn't be a constant
@@ -510,7 +607,7 @@ pub async fn fetch_smart_contract(ctx: &RpcCtx, txid: bitcoin::Txid) -> Result<S
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
+    use std::{fs::File, path::PathBuf};
 
     use secp256k1::hashes::Hash;
 
