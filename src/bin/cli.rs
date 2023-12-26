@@ -1,20 +1,16 @@
 use std::{collections::HashMap, path::PathBuf, str::FromStr};
 
 use anyhow::{ensure, Context, Result};
-use bitcoin::{absolute::LockTime, transaction::Version, Address, Transaction, Txid};
+use bitcoin::{Address, Txid};
 use clap::{Parser, Subcommand};
 use tempdir::TempDir;
 use zkbitcoin::{
     alice_sign_tx::generate_and_broadcast_transaction,
     bob_request::{send_bob_request, BobRequest},
-    committee::{
-        self,
-        orchestrator::{CommitteeConfig, Member},
-    },
+    committee::orchestrator::{CommitteeConfig, Member},
     constants::{BITCOIN_JSON_RPC_VERSION, ORCHESTRATOR_ADDRESS},
     frost, get_network,
-    json_rpc_stuff::RpcCtx,
-    plonk,
+    json_rpc_stuff::{fund_raw_transaction, RpcCtx, TransactionOrHex},
     snarkjs::{self, CompilationResult},
 };
 
@@ -400,9 +396,6 @@ async fn main() -> Result<()> {
                 proof_inputs,
             )
             .await?;
-
-            // fund it using BITCOIN RPC
-            todo!();
 
             // send bob's request to the MPC committee.
             // TODO: we need a coordinator.

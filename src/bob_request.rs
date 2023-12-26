@@ -16,7 +16,7 @@ use crate::{
         FEE_BITCOIN_SAT, FEE_ZKBITCOIN_SAT, MINIMUM_CONFIRMATIONS, ZKBITCOIN_FEE_PUBKEY,
         ZKBITCOIN_PUBKEY,
     },
-    json_rpc_stuff::json_rpc_request,
+    json_rpc_stuff::{fund_raw_transaction, json_rpc_request, TransactionOrHex},
     plonk::ProofInputs,
     snarkjs::{self, verify_proof},
 };
@@ -216,6 +216,10 @@ impl BobRequest {
             proof_inputs.insert("truncated_txid".to_string(), vec![big.to_str_radix(10)]);
         }
 
+        // fund it using BITCOIN RPC
+        let (_raw_tx_with_inputs_hex, funded_tx) =
+            fund_raw_transaction(rpc_ctx, TransactionOrHex::Transaction(&tx)).await?;
+
         // create a proof with the correct txid this time
         let (proof, public_inputs, vk) = snarkjs::prove(&circom_circuit_path, &proof_inputs)?;
 
@@ -232,7 +236,7 @@ impl BobRequest {
 
         //
         let res = Self {
-            tx,
+            tx: funded_tx,
             zkapp_input: 0,
             vk,
             proof,
