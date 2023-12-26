@@ -22,6 +22,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     bob_request::{BobRequest, BobResponse},
+    committee::node::Round1Response,
     constants::{FEE_BITCOIN_SAT, FEE_ZKBITCOIN_SAT, ZKBITCOIN_PUBKEY},
     frost,
     json_rpc_stuff::{json_rpc_request, send_raw_transaction, RpcCtx, TransactionOrHex},
@@ -111,10 +112,10 @@ impl Orchestrator {
             let resp = resp?;
 
             let response: bitcoincore_rpc::jsonrpc::Response = serde_json::from_str(&resp)?;
-            let bob_response: BobResponse = response.result()?;
+            let resp: Round1Response = response.result()?;
 
             // store the commitment
-            commitments_map.insert(**member_id, bob_response.commitments.clone());
+            commitments_map.insert(**member_id, resp.commitments.clone());
         }
 
         //

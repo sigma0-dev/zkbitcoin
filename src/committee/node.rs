@@ -57,11 +57,16 @@ pub struct LocalSigningTask {
 // Methods
 //
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Round1Response {
+    pub commitments: frost_secp256k1_tr::round1::SigningCommitments,
+}
+
 /// Bob's request to unlock funds from a smart contract.
 async fn round_1_signing(
     params: Params<'static>,
     context: Arc<NodeState>,
-) -> RpcResult<BobResponse> {
+) -> RpcResult<Round1Response> {
     // get bob request
     let bob_request: [BobRequest; 1] = params.parse()?;
     let bob_request = &bob_request[0];
@@ -81,7 +86,7 @@ async fn round_1_signing(
             if local_signing_task.proof_hash == bob_request.proof.hash() {
                 // we've already validated this proof and started round 1,
                 // just return the cached commitments
-                return RpcResult::Ok(BobResponse {
+                return RpcResult::Ok(Round1Response {
                     commitments: (&local_signing_task.nonces).into(),
                 });
             } else {
@@ -130,8 +135,8 @@ async fn round_1_signing(
     }
 
     // response
-    let bob_response = BobResponse { commitments };
-    RpcResult::Ok(bob_response)
+    let resp = Round1Response { commitments };
+    RpcResult::Ok(resp)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

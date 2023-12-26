@@ -10,7 +10,9 @@ use zkbitcoin::{
     committee::orchestrator::{CommitteeConfig, Member},
     constants::{BITCOIN_JSON_RPC_VERSION, ORCHESTRATOR_ADDRESS},
     frost, get_network,
-    json_rpc_stuff::{fund_raw_transaction, RpcCtx, TransactionOrHex},
+    json_rpc_stuff::{
+        fund_raw_transaction, send_raw_transaction, sign_transaction, RpcCtx, TransactionOrHex,
+    },
     snarkjs::{self, CompilationResult},
 };
 
@@ -407,6 +409,20 @@ async fn main() -> Result<()> {
                 .context("error while sending request to orchestrator")?;
 
             println!("{:?}", bob_response);
+
+            // sign it
+            let (signed_tx_hex, _signed_tx) = sign_transaction(
+                &rpc_ctx,
+                TransactionOrHex::Transaction(&bob_response.unlocked_tx),
+            )
+            .await?;
+
+            // broadcast transaction
+            let txid = send_raw_transaction(&rpc_ctx, TransactionOrHex::Hex(signed_tx_hex)).await?;
+
+            // print useful msg
+            println!("- txid broadcast to the network: {txid}");
+            println!("- on an explorer: https://blockstream.info/testnet/tx/{txid}");
         }
 
         Commands::GenerateCommittee {
