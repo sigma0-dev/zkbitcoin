@@ -77,26 +77,13 @@ pub struct BobRequest {
     pub public_inputs: Vec<String>,
 }
 
-fn extract<'a>(
-    proof_inputs: &'a HashMap<String, Vec<String>>,
-    name: &str,
-    len: usize,
-) -> Result<&'a [String]> {
-    let var = proof_inputs
-        .get(name)
-        .context("the proof inputs must at least contain a `{name}`")?;
-    let var_len = var.len();
-    ensure!(var_len == len, "`{name}`" has a length of {var_len} instead of the expected length of {len});
-    Ok(var)
-}
-
 impl BobRequest {
     pub async fn new(
         rpc_ctx: &RpcCtx,
         bob_address: Address,
         txid: bitcoin::Txid, // of zkapp
         circom_circuit_path: &Path,
-        proof_inputs: HashMap<String, Vec<String>>,
+        mut proof_inputs: HashMap<String, Vec<String>>,
     ) -> Result<Self> {
         // fetch smart contract we want to use
         let smart_contract = fetch_smart_contract(&rpc_ctx, txid).await?;
@@ -106,19 +93,12 @@ impl BobRequest {
         // we need to do this because we need to include the `new_state` in the transaction
         // and then we can compute the transaction ID
         // and then we can compute the proof on the correct public inputs (which include the transaction ID).
-        let get_new_state = |public_inputs: ProofInputs| {
-            Ok(public_inputs
-                .0
-                .get(0..smart_contract.state_len())
-                .context("the full public input does not contain a new state")?
-                .to_vec())
-        };
 
         // truncated_txid = 0
         proof_inputs.insert("truncated_txid".to_string(), vec!["0".to_string()]);
 
         // prove
-        let (proof, public_inputs, vk) = snarkjs::prove(&circom_circuit_path, proof_inputs)?;
+        let (proof, public_inputs, vk) = snarkjs::prove(&circom_circuit_path, &proof_inputs)?;
 
         // sanity check
         ensure!(
@@ -127,7 +107,11 @@ impl BobRequest {
         );
 
         // extract new_state
-        let new_state = get_new_state(public_inputs)?;
+        let new_state = public_inputs
+            .0
+            .get(0..smart_contract.state_len())
+            .context("the full public input does not contain a new state")?
+            .to_vec();
 
         // create a transaction to spend that input
         let tx = {
@@ -206,7 +190,7 @@ impl BobRequest {
                 });
 
                 // the new state
-                for state_i in new_state {
+                for state_i in &new_state {
                     let thing: &bitcoin::script::PushBytes = state_i.as_bytes().try_into().unwrap();
                     outputs.push(TxOut {
                         value: Amount::from_sat(0),
@@ -233,11 +217,16 @@ impl BobRequest {
         }
 
         // create a proof with the correct txid this time
-        let (proof, public_inputs, vk) = snarkjs::prove(&circom_circuit_path, proof_inputs)?;
+        let (proof, public_inputs, vk) = snarkjs::prove(&circom_circuit_path, &proof_inputs)?;
 
         // and ensure it created the same new_state
+        let new_state2 = public_inputs
+            .0
+            .get(0..smart_contract.state_len())
+            .context("the full public input does not contain a new state")?
+            .to_vec();
         ensure!(
-            new_state == get_new_state(public_inputs)?,
+            new_state == new_state2,
             "the circuit must return the same output given different txid"
         );
 
@@ -700,8 +689,6 @@ pub async fn fetch_smart_contract(ctx: &RpcCtx, txid: bitcoin::Txid) -> Result<S
 #[cfg(test)]
 mod tests {
     use std::{fs::File, path::PathBuf};
-
-    use secp256k1::hashes::Hash;
 
     use crate::plonk;
 

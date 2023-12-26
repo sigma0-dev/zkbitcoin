@@ -1,8 +1,9 @@
-use std::{path::PathBuf, str::FromStr};
+use std::{collections::HashMap, path::PathBuf, str::FromStr};
 
-use anyhow::{Context, Result};
-use bitcoin::{absolute::LockTime, transaction::Version, Transaction};
+use anyhow::{ensure, Context, Result};
+use bitcoin::{absolute::LockTime, transaction::Version, Address, Transaction, Txid};
 use clap::{Parser, Subcommand};
+use tempdir::TempDir;
 use zkbitcoin::{
     alice_sign_tx::generate_and_broadcast_transaction,
     bob_request::{send_bob_request, BobRequest},
@@ -11,9 +12,10 @@ use zkbitcoin::{
         orchestrator::{CommitteeConfig, Member},
     },
     constants::{BITCOIN_JSON_RPC_VERSION, ORCHESTRATOR_ADDRESS},
-    frost,
+    frost, get_network,
     json_rpc_stuff::RpcCtx,
-    plonk, snarkjs,
+    plonk,
+    snarkjs::{self, CompilationResult},
 };
 
 #[derive(Parser)]
@@ -59,6 +61,18 @@ enum Commands {
     /// Bob can use this to unlock funds from a smart contract.
     UnlockFundsRequest {
         /// The wallet name of the RPC full node.
+        #[arg(env = "RPC_WALLET")]
+        wallet: Option<String>,
+
+        /// The `http(s)://address:port`` of the RPC full node.
+        #[arg(env = "RPC_ADDRESS")]
+        address: Option<String>,
+
+        /// The `user:password`` of the RPC full node.
+        #[arg(env = "RPC_AUTH")]
+        auth: Option<String>,
+
+        /// The address of the orchestrator.
         #[arg(env = "ENDPOINT")]
         orchestrator_address: Option<String>,
 
@@ -180,16 +194,13 @@ async fn main() -> Result<()> {
             );
 
             // compile to get VK (and its digest)
-            let (_vk, vk_hash) = {
+            let (vk, vk_hash) = {
                 let tmp_dir = TempDir::new("zkbitcoin_").expect("couldn't create tmp dir");
                 let CompilationResult {
                     verifier_key,
                     circuit_r1cs_path: _,
                     prover_key_path: _,
-                } = compile(tmp_dir, &circom_circuit_path).unwrap();
-
-                // clean up
-                remove_dir_all(tmp_dir).expect("failed to remove temp dir");
+                } = snarkjs::compile(&tmp_dir, &circom_circuit_path).unwrap();
 
                 // verifier_key
 
@@ -235,7 +246,7 @@ async fn main() -> Result<()> {
             // }
 
             // sanity check
-            let num_public_inputs = vk.nPublic.len();
+            let num_public_inputs = vk.nPublic;
             ensure!(
                 num_public_inputs > 0,
                 "the circuit must have at least one public input (the txid)"
@@ -243,7 +254,7 @@ async fn main() -> Result<()> {
 
             // sanity check for stateful zkapps
             if num_public_inputs > 1 {
-                let double_state_len = vk.nPublic.len() - 3; /* txid, amount_in, amount_out */
+                let double_state_len = vk.nPublic - 3; /* txid, amount_in, amount_out */
                 let state_len = double_state_len.checked_div(2).context("the VK")?;
                 {
                     // TODO: does checked_div errors if its not a perfect division?
@@ -251,12 +262,17 @@ async fn main() -> Result<()> {
                 }
 
                 ensure!(
-                    state_len == initial_state.len(),
+                    state_len
+                        == initial_state
+                            .clone()
+                            .context("an initial state should be passed for stateful zkapps")?
+                            .len(),
                     "the given initial state doesn't match the size of the circuit state"
                 );
             }
 
             // generate and broadcast deploy transaction
+            let initial_state = initial_state.clone().unwrap_or_default();
             let txid =
                 generate_and_broadcast_transaction(&ctx, &vk_hash, initial_state, *satoshi_amount)
                     .await
@@ -267,12 +283,21 @@ async fn main() -> Result<()> {
 
         // Bob's command
         Commands::UnlockFundsRequest {
+            wallet,
+            address,
+            auth,
             orchestrator_address,
             txid,
             recipient_address,
             circom_circuit_path,
-            mut proof_inputs,
+            proof_inputs,
         } => {
+            let rpc_ctx = RpcCtx::new(
+                Some(BITCOIN_JSON_RPC_VERSION),
+                wallet.clone(),
+                address.clone(),
+                auth.clone(),
+            );
             // get proof, vk, and inputs
             // let proof: plonk::Proof = {
             //     let full_path = PathBuf::from(proof_path);
@@ -331,7 +356,7 @@ async fn main() -> Result<()> {
             // };
 
             // sanitize proof inputs
-            if let Some(proof_inputs) = proof_inputs {
+            if let Some(proof_inputs) = &proof_inputs {
                 ensure!(
                     !proof_inputs.contains("truncated_txid"),
                     "the transaction ID is provided"
@@ -350,15 +375,26 @@ async fn main() -> Result<()> {
                 );
             }
 
-            let mut proof_inputs = proof_inputs.unwrap_or_default();
+            // parse Bob address
+            let bob_address = Address::from_str(recipient_address)
+                .unwrap()
+                .require_network(get_network())
+                .unwrap();
 
-            //bob_address: recipient_address.clone(),
-            //txid: bitcoin::Txid::from_str(txid).unwrap()
+            // parse proof inputs
+            let proof_inputs: HashMap<String, Vec<String>> = if let Some(s) = &proof_inputs {
+                serde_json::from_str(s)?
+            } else {
+                HashMap::new()
+            };
+
+            // parse transaction ID
+            let txid = Txid::from_str(txid)?;
 
             // create bob request
             let bob_request = BobRequest::new(
                 &rpc_ctx,
-                recipient_address,
+                bob_address,
                 txid,
                 circom_circuit_path,
                 proof_inputs,

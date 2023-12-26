@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    fs::{remove_dir_all, File},
+    fs::File,
     path::{Path, PathBuf},
     process::Command,
 };
@@ -17,7 +17,7 @@ pub struct CompilationResult {
 }
 
 /// Compiles a circom circuit to a wasm and r1cs file.
-pub fn compile(tmp_dir: TempDir, circom_circuit_path: &Path) -> Result<CompilationResult> {
+pub fn compile(tmp_dir: &TempDir, circom_circuit_path: &Path) -> Result<CompilationResult> {
     // SRS
     let circuit_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap())
         .join("examples")
@@ -54,9 +54,9 @@ pub fn compile(tmp_dir: TempDir, circom_circuit_path: &Path) -> Result<Compilati
             .current_dir(&tmp_dir)
             .arg("plonk")
             .arg("setup")
-            .arg(circuit_r1cs_path)
+            .arg(&circuit_r1cs_path)
             .arg(srs_path)
-            .arg(prover_key_path)
+            .arg(&prover_key_path)
             .output()
             .expect("failed to execute process");
 
@@ -75,8 +75,8 @@ pub fn compile(tmp_dir: TempDir, circom_circuit_path: &Path) -> Result<Compilati
             .arg("zkey")
             .arg("export")
             .arg("verificationkey")
-            .arg(prover_key_path)
-            .arg(verifier_key_path)
+            .arg(&prover_key_path)
+            .arg(&verifier_key_path)
             .output()
             .expect("failed to execute process");
 
@@ -105,7 +105,7 @@ pub fn compile(tmp_dir: TempDir, circom_circuit_path: &Path) -> Result<Compilati
 // perhaps I can just use snarkjs as a library directly?
 pub fn prove(
     circom_circuit_path: &Path,
-    public_inputs: HashMap<String, Vec<String>>,
+    public_inputs: &HashMap<String, Vec<String>>,
 ) -> Result<(plonk::Proof, plonk::ProofInputs, plonk::VerifierKey)> {
     // create tmp dir
     let tmp_dir = TempDir::new("zkbitcoin_").expect("couldn't create tmp dir");
@@ -113,13 +113,13 @@ pub fn prove(
     // compile
     let CompilationResult {
         verifier_key,
-        circuit_r1cs_path,
+        circuit_r1cs_path: _,
         prover_key_path,
-    } = compile(tmp_dir, circom_circuit_path)?;
+    } = compile(&tmp_dir, circom_circuit_path)?;
 
     // write inputs to file
     let public_inputs_path = tmp_dir.path().join("public_inputs.json");
-    let mut tmp_file = File::create(public_inputs_path).expect("file creation failed");
+    let mut tmp_file = File::create(&public_inputs_path).expect("file creation failed");
     serde_json::to_writer(&mut tmp_file, &public_inputs).expect("write failed");
 
     // set up new paths for files that will be created
@@ -144,8 +144,8 @@ pub fn prove(
             .current_dir(&tmp_dir)
             .arg(generate_witness_path)
             .arg(circuit_wasm_path)
-            .arg(public_inputs_path)
-            .arg(witness_path)
+            .arg(&public_inputs_path)
+            .arg(&witness_path)
             .output()
             .expect("failed to execute process");
 
@@ -163,9 +163,9 @@ pub fn prove(
             .arg("plonk")
             .arg("prove")
             .arg(prover_key_path)
-            .arg(witness_path)
-            .arg(proof_path)
-            .arg(full_public_inputs_path)
+            .arg(&witness_path)
+            .arg(&proof_path)
+            .arg(&full_public_inputs_path)
             .output()
             .expect("failed to execute process");
 
@@ -184,9 +184,6 @@ pub fn prove(
         File::open(full_public_inputs_path).expect("file creation failed");
     let full_public_inputs: plonk::ProofInputs =
         serde_json::from_reader(full_public_inputs_file).expect("read failed");
-
-    // clean up
-    remove_dir_all(tmp_dir).expect("failed to remove temp dir");
 
     Ok((proof, full_public_inputs, verifier_key))
 }
@@ -233,9 +230,6 @@ pub fn verify_proof(
         }
     }
 
-    // clean up
-    remove_dir_all(tmp_dir).expect("failed to remove temp dir");
-
     //
     Ok(())
 }
@@ -260,16 +254,12 @@ mod tests {
         //         circuit_r1cs_path: _,
         //         prover_key_path: _,
         //     } = compile(tmp_dir, &circom_circuit_path).unwrap();
-
-        //     // clean up
-        //     remove_dir_all(tmp_dir).expect("failed to remove temp dir");
-
         //     verifier_key
         // };
 
         // prove
         let mut public_inputs = HashMap::new();
-        let (proof, full_inputs, vk) = prove(&circom_circuit_path, public_inputs).unwrap();
+        let (proof, full_inputs, vk) = prove(&circom_circuit_path, &public_inputs).unwrap();
 
         // verify
         verify_proof(&vk, &full_inputs.0, &proof).unwrap();
