@@ -3,8 +3,8 @@ use std::{collections::HashMap, path::Path, str::FromStr};
 use anyhow::{bail, ensure, Context, Result};
 use bitcoin::{
     absolute::LockTime, consensus::Encodable, opcodes::all::OP_RETURN, script::Instruction,
-    transaction::Version, Address, Amount, Denomination, OutPoint, PublicKey, Script, ScriptBuf,
-    Sequence, Transaction, TxIn, TxOut, Txid, Witness,
+    transaction::Version, Address, Amount, Denomination, OutPoint, PublicKey, ScriptBuf, Sequence,
+    Transaction, TxIn, TxOut, Txid, Witness,
 };
 use itertools::Itertools;
 use num_bigint::BigUint;
@@ -17,7 +17,6 @@ use crate::{
         ZKBITCOIN_PUBKEY,
     },
     json_rpc_stuff::{fund_raw_transaction, json_rpc_request, TransactionOrHex},
-    plonk::ProofInputs,
     snarkjs::{self, verify_proof},
 };
 use crate::{json_rpc_stuff::RpcCtx, plonk};
@@ -90,28 +89,28 @@ impl BobRequest {
 
         // create a proof with a 0 txid
         // (we expect the proof to give the same `new_state` with the correct `truncated_txid` later)
-        // we need to do this because we need to include the `new_state` in the transaction
+        // we need to do this because we need to include the `new_state` in a stateful zkapp transaction
         // and then we can compute the transaction ID
         // and then we can compute the proof on the correct public inputs (which include the transaction ID).
 
-        // truncated_txid = 0
-        proof_inputs.insert("truncated_txid".to_string(), vec!["0".to_string()]);
+        let new_state = if smart_contract.is_stateful() {
+            // truncated_txid = 0
+            proof_inputs.insert("truncated_txid".to_string(), vec!["0".to_string()]);
 
-        // prove
-        let (proof, public_inputs, vk) = snarkjs::prove(&circom_circuit_path, &proof_inputs)?;
+            // prove
+            let (_proof, public_inputs, _vk) = snarkjs::prove(&circom_circuit_path, &proof_inputs)?;
 
-        // sanity check
-        ensure!(
-            vk.hash() == smart_contract.vk_hash,
-            "the zkapp being used does not match the circuit passed"
-        );
+            // extract new_state
+            let new_state = public_inputs
+                .0
+                .get(0..smart_contract.state_len())
+                .context("the full public input does not contain a new state")?
+                .to_vec();
 
-        // extract new_state
-        let new_state = public_inputs
-            .0
-            .get(0..smart_contract.state_len())
-            .context("the full public input does not contain a new state")?
-            .to_vec();
+            Some(new_state)
+        } else {
+            None
+        };
 
         // create a transaction to spend that input
         let tx = {
@@ -190,7 +189,7 @@ impl BobRequest {
                 });
 
                 // the new state
-                for state_i in &new_state {
+                for state_i in new_state.as_ref().unwrap() {
                     let thing: &bitcoin::script::PushBytes = state_i.as_bytes().try_into().unwrap();
                     outputs.push(TxOut {
                         value: Amount::from_sat(0),
@@ -223,16 +222,24 @@ impl BobRequest {
         // create a proof with the correct txid this time
         let (proof, public_inputs, vk) = snarkjs::prove(&circom_circuit_path, &proof_inputs)?;
 
-        // and ensure it created the same new_state
-        let new_state2 = public_inputs
-            .0
-            .get(0..smart_contract.state_len())
-            .context("the full public input does not contain a new state")?
-            .to_vec();
+        // sanity check
         ensure!(
-            new_state == new_state2,
-            "the circuit must return the same output given different txid"
+            vk.hash() == smart_contract.vk_hash,
+            "the zkapp being used does not match the circuit passed"
         );
+
+        // and ensure it created the same new_state
+        if smart_contract.is_stateful() {
+            let new_state2 = public_inputs
+                .0
+                .get(0..smart_contract.state_len())
+                .context("the full public input does not contain a new state")?
+                .to_vec();
+            ensure!(
+                new_state.unwrap() == new_state2,
+                "the circuit must return the same output given different txid"
+            );
+        }
 
         //
         let res = Self {

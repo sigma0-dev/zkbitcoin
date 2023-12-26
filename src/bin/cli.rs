@@ -10,9 +10,7 @@ use zkbitcoin::{
     committee::orchestrator::{CommitteeConfig, Member},
     constants::{BITCOIN_JSON_RPC_VERSION, ORCHESTRATOR_ADDRESS},
     frost, get_network,
-    json_rpc_stuff::{
-        fund_raw_transaction, send_raw_transaction, sign_transaction, RpcCtx, TransactionOrHex,
-    },
+    json_rpc_stuff::{send_raw_transaction, sign_transaction, RpcCtx, TransactionOrHex},
     snarkjs::{self, CompilationResult},
 };
 
