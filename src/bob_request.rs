@@ -1,10 +1,10 @@
-use std::str::FromStr;
+use std::{collections::HashMap, path::Path, str::FromStr};
 
 use anyhow::{bail, ensure, Context, Result};
 use bitcoin::{
-    absolute::LockTime, opcodes::all::OP_RETURN, script::Instruction, transaction::Version,
-    Address, Amount, Denomination, OutPoint, PublicKey, Script, ScriptBuf, Sequence, Transaction,
-    TxIn, TxOut, Txid, Witness,
+    absolute::LockTime, consensus::Encodable, opcodes::all::OP_RETURN, script::Instruction,
+    transaction::Version, Address, Amount, Denomination, OutPoint, PublicKey, Script, ScriptBuf,
+    Sequence, Transaction, TxIn, TxOut, Txid, Witness,
 };
 use itertools::Itertools;
 use num_bigint::BigUint;
@@ -17,7 +17,8 @@ use crate::{
         ZKBITCOIN_PUBKEY,
     },
     json_rpc_stuff::json_rpc_request,
-    snarkjs::verify_proof,
+    plonk::ProofInputs,
+    snarkjs::{self, verify_proof},
 };
 use crate::{json_rpc_stuff::RpcCtx, plonk};
 
@@ -76,24 +77,61 @@ pub struct BobRequest {
     pub public_inputs: Vec<String>,
 }
 
+fn extract<'a>(
+    proof_inputs: &'a HashMap<String, Vec<String>>,
+    name: &str,
+    len: usize,
+) -> Result<&'a [String]> {
+    let var = proof_inputs
+        .get(name)
+        .context("the proof inputs must at least contain a `{name}`")?;
+    let var_len = var.len();
+    ensure!(var_len == len, "`{name}`" has a length of {var_len} instead of the expected length of {len});
+    Ok(var)
+}
+
 impl BobRequest {
-    async fn new(
+    pub async fn new(
         rpc_ctx: &RpcCtx,
         bob_address: Address,
         txid: bitcoin::Txid, // of zkapp
-        vk: plonk::VerifierKey,
-        proof: plonk::Proof,
-        public_inputs: Vec<String>,
+        circom_circuit_path: &Path,
+        proof_inputs: HashMap<String, Vec<String>>,
     ) -> Result<Self> {
-        let tx = {
-            ensure!(
-                vk.nPublic == public_inputs.len(),
-                "sanity check failed: the verifier key does not match the public inputs given"
-            );
-            let mut inputs = vec![];
+        // fetch smart contract we want to use
+        let smart_contract = fetch_smart_contract(&rpc_ctx, txid).await?;
 
-            // fetch smart contract we want to use
-            let smart_contract = fetch_smart_contract(&rpc_ctx, txid).await?;
+        // create a proof with a 0 txid
+        // (we expect the proof to give the same `new_state` with the correct `truncated_txid` later)
+        // we need to do this because we need to include the `new_state` in the transaction
+        // and then we can compute the transaction ID
+        // and then we can compute the proof on the correct public inputs (which include the transaction ID).
+        let get_new_state = |public_inputs: ProofInputs| {
+            Ok(public_inputs
+                .0
+                .get(0..smart_contract.state_len())
+                .context("the full public input does not contain a new state")?
+                .to_vec())
+        };
+
+        // truncated_txid = 0
+        proof_inputs.insert("truncated_txid".to_string(), vec!["0".to_string()]);
+
+        // prove
+        let (proof, public_inputs, vk) = snarkjs::prove(&circom_circuit_path, proof_inputs)?;
+
+        // sanity check
+        ensure!(
+            vk.hash() == smart_contract.vk_hash,
+            "the zkapp being used does not match the circuit passed"
+        );
+
+        // extract new_state
+        let new_state = get_new_state(public_inputs)?;
+
+        // create a transaction to spend that input
+        let tx = {
+            let mut inputs = vec![];
 
             // first input is the zkapp being used
             {
@@ -124,9 +162,14 @@ impl BobRequest {
             {
                 let script_pubkey = bob_address.script_pubkey();
                 let value = if smart_contract.is_stateful() {
-                    let amount = public_inputs.get(state_len)
+                    string_to_amount(
+                        proof_inputs
+                            .get("amount_out")
+                            .and_then(|x| x.get(0))
+                            .context("amount_out in proof inputs must be of length 1")?,
+                    )?
                 } else {
-                    smart_contract.locked_value - ZKBITCOIN_FEE_PUBKEY
+                    smart_contract.locked_value - Amount::from_sat(FEE_ZKBITCOIN_SAT)
                 };
                 outputs.push(TxOut {
                     value,
@@ -135,11 +178,41 @@ impl BobRequest {
             }
 
             // if it's a stateful zkapp, we need to add a new zkapp as output
-            if smart_contract.stateful() {
+            if smart_contract.is_stateful() {
+                // the new locked value to zkBitcoin
+                let zkbitcoin_pubkey: PublicKey = PublicKey::from_str(ZKBITCOIN_PUBKEY).unwrap();
+                let amount_in = string_to_amount(
+                    proof_inputs
+                        .get("amount_in")
+                        .and_then(|x| x.get(0))
+                        .context("amount_in in proof inputs must be of length 1")?,
+                )?;
+                let amount_out = string_to_amount(
+                    proof_inputs
+                        .get("amount_out")
+                        .and_then(|x| x.get(0))
+                        .context("amount_out in proof inputs must be of length 1")?,
+                )?;
+                let new_value = smart_contract.locked_value + amount_in - amount_out;
+                outputs.push(TxOut {
+                    value: new_value,
+                    script_pubkey: p2tr_script_to(zkbitcoin_pubkey),
+                });
+
+                // the vk
                 outputs.push(TxOut {
                     value: Amount::from_sat(0),
-                    script_pubkey: p2tr_script_to(vk.to_public_key()),
-                })
+                    script_pubkey: ScriptBuf::new_op_return(smart_contract.vk_hash),
+                });
+
+                // the new state
+                for state_i in new_state {
+                    let thing: &bitcoin::script::PushBytes = state_i.as_bytes().try_into().unwrap();
+                    outputs.push(TxOut {
+                        value: Amount::from_sat(0),
+                        script_pubkey: ScriptBuf::new_op_return(thing),
+                    })
+                }
             }
 
             Transaction {
@@ -150,12 +223,31 @@ impl BobRequest {
             }
         };
 
+        // add truncated txid to proof inputs
+        {
+            let mut buf = vec![];
+            tx.consensus_encode(&mut buf)?;
+            // TODO: what's the exact size of the field?
+            let big = BigUint::from_bytes_be(&buf);
+            proof_inputs.insert("truncated_txid".to_string(), vec![big.to_str_radix(10)]);
+        }
+
+        // create a proof with the correct txid this time
+        let (proof, public_inputs, vk) = snarkjs::prove(&circom_circuit_path, proof_inputs)?;
+
+        // and ensure it created the same new_state
+        ensure!(
+            new_state == get_new_state(public_inputs)?,
+            "the circuit must return the same output given different txid"
+        );
+
+        //
         let res = Self {
             tx,
             zkapp_input: 0,
             vk,
             proof,
-            public_inputs,
+            public_inputs: public_inputs.0,
         };
         Ok(res)
     }
@@ -314,7 +406,7 @@ impl BobRequest {
         smart_contract.check_remaining_funds(&self)?;
 
         // verify proof using snarkjs
-        verify_proof(&self)?;
+        verify_proof(&self.vk, &self.public_inputs, &self.proof)?;
 
         //
         Ok(smart_contract)

@@ -5,7 +5,7 @@ use bitcoin::{absolute::LockTime, transaction::Version, Transaction};
 use clap::{Parser, Subcommand};
 use zkbitcoin::{
     alice_sign_tx::generate_and_broadcast_transaction,
-    bob_request::send_bob_request,
+    bob_request::{send_bob_request, BobRequest},
     committee::{
         self,
         orchestrator::{CommitteeConfig, Member},
@@ -13,7 +13,7 @@ use zkbitcoin::{
     constants::{BITCOIN_JSON_RPC_VERSION, ORCHESTRATOR_ADDRESS},
     frost,
     json_rpc_stuff::RpcCtx,
-    plonk,
+    plonk, snarkjs,
 };
 
 #[derive(Parser)]
@@ -39,14 +39,17 @@ enum Commands {
         #[arg(env = "RPC_AUTH")]
         auth: Option<String>,
 
-        /// The path to the verifier key in JSON format (see `examples/circuit/vk.json` for an example).
+        // /// The path to the verifier key in JSON format (see `examples/circuit/vk.json` for an example).
+        // #[arg(short, long)]
+        // verifier_key_path: Option<String>,
+        // -----
+        /// The path to the circom circuit to deploy.
         #[arg(short, long)]
-        verifier_key_path: String,
+        circom_circuit_path: PathBuf,
 
-        /// The path to the public input (see `examples/circuit/public_inputs.json` for an example).
-        /// We assume that the JSON object is correctly ordered (in the order that the Circom circuit expects).
+        /// Optionally, for stateful zkapps, an initial state.
         #[arg(short, long)]
-        public_inputs_path: Option<String>,
+        initial_state: Option<Vec<String>>,
 
         /// The amount in satoshis to send to the smart contract.
         #[arg(short, long)]
@@ -67,19 +70,27 @@ enum Commands {
         #[arg(short, long)]
         recipient_address: String,
 
-        /// The path to the verifier key in JSON format (see `examples/circuit/vk.json` for an example).
+        // /// The path to the verifier key in JSON format (see `examples/circuit/vk.json` for an example).
+        // #[arg(short, long)]
+        // verifier_key_path: String,
+        /// The path to the circom circuit to deploy.
         #[arg(short, long)]
-        verifier_key_path: String,
+        circom_circuit_path: PathBuf,
 
-        /// The path to the full proof public inputs
-        /// (see `examples/circuit/proof_inputs.json` for an example).
+        /// A JSON string of the proof inputs in case of a stateful zkapp being used.
+        /// We expect the following fields:
+        /// `prev_state`, `amount_in`, `amount_out`.
         #[arg(short, long)]
-        inputs_path: Option<String>,
+        proof_inputs: Option<String>,
+        // /// The path to the full proof public inputs
+        // /// (see `examples/circuit/proof_inputs.json` for an example).
+        // #[arg(short, long)]
+        // inputs_path: Option<String>,
 
-        /// The path to the full proof.
-        /// (see `examples/circuit/proof.json` for an example).
-        #[arg(short, long)]
-        proof_path: String,
+        // /// The path to the full proof.
+        // /// (see `examples/circuit/proof.json` for an example).
+        // #[arg(short, long)]
+        // proof_path: String,
     },
 
     /// Generates an MPC committee via a trusted dealer.
@@ -152,12 +163,13 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match &cli.command {
+        // Alice's command
         Commands::DeployTransaction {
             wallet,
             address,
             auth,
-            verifier_key_path,
-            public_inputs_path,
+            circom_circuit_path,
+            initial_state,
             satoshi_amount,
         } => {
             let ctx = RpcCtx::new(
@@ -167,122 +179,191 @@ async fn main() -> Result<()> {
                 auth.clone(),
             );
 
-            let (vk, vk_hash) = {
-                // open vk file
-                let full_path = PathBuf::from(verifier_key_path);
-                let file = std::fs::File::open(full_path).expect("file not found");
-                let vk: plonk::VerifierKey =
-                    serde_json::from_reader(file).expect("error while reading file");
+            // compile to get VK (and its digest)
+            let (_vk, vk_hash) = {
+                let tmp_dir = TempDir::new("zkbitcoin_").expect("couldn't create tmp dir");
+                let CompilationResult {
+                    verifier_key,
+                    circuit_r1cs_path: _,
+                    prover_key_path: _,
+                } = compile(tmp_dir, &circom_circuit_path).unwrap();
+
+                // clean up
+                remove_dir_all(tmp_dir).expect("failed to remove temp dir");
+
+                // verifier_key
+
+                // // open vk file
+                // let full_path = PathBuf::from(verifier_key_path);
+                // let file = std::fs::File::open(full_path).expect("file not found");
+                // let vk: plonk::VerifierKey =
+                //     serde_json::from_reader(file).expect("error while reading file");
 
                 // hash
-                let vk_hash = vk.hash();
+                let vk_hash = verifier_key.hash();
 
-                (vk, vk_hash)
+                (verifier_key, vk_hash)
             };
 
-            // TODO: this doesn't seem like a very user friendly way to pass public inputs. What if I want to pass a and c, but not b? It seems like I'd have to pass an order as well... well we might change this design so this is good enough for now.
-            let mut public_inputs = vec![];
-            if let Some(path) = public_inputs_path {
-                // open public_inputs file
-                let full_path = PathBuf::from(path);
-                let file = std::fs::File::open(&full_path)
-                    .unwrap_or_else(|_| panic!("file not found at path: {:?}", full_path));
+            // let mut public_inputs = vec![];
+            // if let Some(path) = public_inputs_path {
+            //     // open public_inputs file
+            //     let full_path = PathBuf::from(path);
+            //     let file = std::fs::File::open(&full_path)
+            //         .unwrap_or_else(|_| panic!("file not found at path: {:?}", full_path));
 
-                // recursively extract all strings from object
-                fn recover_all_strings(acc: &mut Vec<String>, value: serde_json::Value) {
-                    match value {
-                        serde_json::Value::String(s) => acc.push(s),
-                        serde_json::Value::Array(arr) => {
-                            for v in arr {
-                                recover_all_strings(acc, v);
-                            }
-                        }
-                        serde_json::Value::Object(obj) => {
-                            for (_, v) in obj {
-                                recover_all_strings(acc, v);
-                            }
-                        }
-                        _ => (),
-                    }
-                }
-                let root: serde_json::Value =
-                    serde_json::from_reader(file).expect("error while reading file");
-                recover_all_strings(&mut public_inputs, root);
+            //     // recursively extract all strings from object
+            //     fn recover_all_strings(acc: &mut Vec<String>, value: serde_json::Value) {
+            //         match value {
+            //             serde_json::Value::String(s) => acc.push(s),
+            //             serde_json::Value::Array(arr) => {
+            //                 for v in arr {
+            //                     recover_all_strings(acc, v);
+            //                 }
+            //             }
+            //             serde_json::Value::Object(obj) => {
+            //                 for (_, v) in obj {
+            //                     recover_all_strings(acc, v);
+            //                 }
+            //             }
+            //             _ => (),
+            //         }
+            //     }
+            //     let root: serde_json::Value =
+            //         serde_json::from_reader(file).expect("error while reading file");
+            //     recover_all_strings(&mut public_inputs, root);
+            // }
 
-                // sanity check
-                if public_inputs.len() > vk.nPublic {
-                    panic!(
-                        "Too many public inputs! Expected {}, got {}",
-                        vk.nPublic,
-                        public_inputs.len()
-                    );
+            // sanity check
+            let num_public_inputs = vk.nPublic.len();
+            ensure!(
+                num_public_inputs > 0,
+                "the circuit must have at least one public input (the txid)"
+            );
+
+            // sanity check for stateful zkapps
+            if num_public_inputs > 1 {
+                let double_state_len = vk.nPublic.len() - 3; /* txid, amount_in, amount_out */
+                let state_len = double_state_len.checked_div(2).context("the VK")?;
+                {
+                    // TODO: does checked_div errors if its not a perfect division?
+                    assert_eq!(state_len * 2, double_state_len);
                 }
+
+                ensure!(
+                    state_len == initial_state.len(),
+                    "the given initial state doesn't match the size of the circuit state"
+                );
             }
 
             // generate and broadcast deploy transaction
             let txid =
-                generate_and_broadcast_transaction(&ctx, &vk_hash, public_inputs, *satoshi_amount)
+                generate_and_broadcast_transaction(&ctx, &vk_hash, initial_state, *satoshi_amount)
                     .await
                     .unwrap();
 
             println!("txid: {}", txid);
         }
 
+        // Bob's command
         Commands::UnlockFundsRequest {
             orchestrator_address,
             txid,
             recipient_address,
-            verifier_key_path,
-            inputs_path,
-            proof_path,
+            circom_circuit_path,
+            mut proof_inputs,
         } => {
             // get proof, vk, and inputs
-            let proof: plonk::Proof = {
-                let full_path = PathBuf::from(proof_path);
-                let file = std::fs::File::open(&full_path)
-                    .unwrap_or_else(|_| panic!("file not found at path: {:?}", full_path));
-                serde_json::from_reader(file).expect("error while reading file")
-            };
-            let vk: plonk::VerifierKey = {
-                let full_path = PathBuf::from(verifier_key_path);
-                let file = std::fs::File::open(&full_path)
-                    .unwrap_or_else(|_| panic!("file not found at path: {:?}", full_path));
-                serde_json::from_reader(file).expect("error while reading file")
-            };
-            let public_inputs: Vec<String> = if let Some(path) = inputs_path {
-                let full_path = PathBuf::from(path);
-                let file = std::fs::File::open(&full_path)
-                    .unwrap_or_else(|_| panic!("file not found at path: {:?}", full_path));
-                let proof_inputs: plonk::ProofInputs =
-                    serde_json::from_reader(file).expect("error while reading file");
-                proof_inputs.0
-            } else {
-                vec![]
-            };
+            // let proof: plonk::Proof = {
+            //     let full_path = PathBuf::from(proof_path);
+            //     let file = std::fs::File::open(&full_path)
+            //         .unwrap_or_else(|_| panic!("file not found at path: {:?}", full_path));
+            //     serde_json::from_reader(file).expect("error while reading file")
+            // };
+            // let vk: plonk::VerifierKey = {
+            //     let full_path = PathBuf::from(verifier_key_path);
+            //     let file = std::fs::File::open(&full_path)
+            //         .unwrap_or_else(|_| panic!("file not found at path: {:?}", full_path));
+            //     serde_json::from_reader(file).expect("error while reading file")
+            // };
+            // let public_inputs: Vec<String> = if let Some(path) = inputs_path {
+            //     let full_path = PathBuf::from(path);
+            //     let file = std::fs::File::open(&full_path)
+            //         .unwrap_or_else(|_| panic!("file not found at path: {:?}", full_path));
+            //     let proof_inputs: plonk::ProofInputs =
+            //         serde_json::from_reader(file).expect("error while reading file");
+            //     proof_inputs.0
+            // } else {
+            //     vec![]
+            // };
 
-            // create a transaction to spend that input
-            let tx = {
-                let mut inputs = vec![];
-                let mut outputs = vec![];
+            // create public input
+            // let full_public_inputs = {
+            //     let mut res = vec![];
 
-                Transaction {
-                    version: Version::TWO,
-                    lock_time: LockTime::ZERO, // no lock time
-                    input: inputs,
-                    output: outputs,
-                }
-            };
+            //     // parse proof inputs
+            //     let proof_inputs: HashMap<String, Vec<String>> =
+            //         serde_json::from_str(proof_inputs)?;
+
+            //     let extract = |name, len| {
+            //         let var = proof_inputs
+            //             .get(name)
+            //             .context("the proof inputs must at least contain a `{name}`")?;
+            //         if let Some(len) = len {
+            //             let var_len = var.len();
+            //             ensure!(var_len == len, "`{name}`" has a length of {var_len} instead of the expected length of {len});
+            //             var
+            //         }
+            //     };
+
+            //     let truncated_txid = extract("truncated_tixd", Some(1))?;
+
+            //     // if there's more than one key, it's a stateful app
+            //     let res = if proof_inputs.len() > 1 {
+            //         let prev_state = extract("prev_state", Some(new_state.len()))?;
+            //         extract("amount_in", Some(1))?;
+            //         extract("amount_out", Some(1))?;
+            //         itertools::chain!(new_state, prev_state, truncated_tixd, amount_out, amount_in)
+            //             .collect_vec()
+            //     } else {
+            //         truncated_txid
+            //     };
+            // };
+
+            // sanitize proof inputs
+            if let Some(proof_inputs) = proof_inputs {
+                ensure!(
+                    !proof_inputs.contains("truncated_txid"),
+                    "the transaction ID is provided"
+                );
+                ensure!(
+                    proof_inputs.contains("amount_in"),
+                    "expected field `prev_state` was not present in proof inputs"
+                );
+                ensure!(
+                    proof_inputs.contains("amount_in"),
+                    "expected field `amount_out` was not present in proof inputs"
+                );
+                ensure!(
+                    proof_inputs.contains("amount_in"),
+                    "expected field `amount_in` was not present in proof inputs"
+                );
+            }
+
+            let mut proof_inputs = proof_inputs.unwrap_or_default();
+
             //bob_address: recipient_address.clone(),
             //txid: bitcoin::Txid::from_str(txid).unwrap()
 
             // create bob request
-            let bob_request = zkbitcoin::bob_request::BobRequest {
-                tx,
-                zkapp_input: 0,
-                vk,
-                proof,
-                public_inputs,
-            };
+            let bob_request = BobRequest::new(
+                &rpc_ctx,
+                recipient_address,
+                txid,
+                circom_circuit_path,
+                proof_inputs,
+            )
+            .await?;
 
             // fund it using BITCOIN RPC
             todo!();

@@ -17,11 +17,13 @@ pub struct CompilationResult {
 }
 
 /// Compiles a circom circuit to a wasm and r1cs file.
-pub fn compile(
-    tmp_dir: TempDir,
-    circom_circuit_path: &Path,
-    srs_path: &Path,
-) -> Result<CompilationResult> {
+pub fn compile(tmp_dir: TempDir, circom_circuit_path: &Path) -> Result<CompilationResult> {
+    // SRS
+    let circuit_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap())
+        .join("examples")
+        .join("circuit");
+    let srs_path = circuit_dir.join("srs.ptau");
+
     // set up new paths for files that will be created
     let circuit_r1cs_path = tmp_dir.path().join("circuit_r1cs.json");
     let prover_key_path = tmp_dir.path().join("prover_key.zkey");
@@ -103,18 +105,17 @@ pub fn compile(
 // perhaps I can just use snarkjs as a library directly?
 pub fn prove(
     circom_circuit_path: &Path,
-    srs_path: &Path,
     public_inputs: HashMap<String, Vec<String>>,
-) -> Result<(plonk::Proof, plonk::ProofInputs)> {
+) -> Result<(plonk::Proof, plonk::ProofInputs, plonk::VerifierKey)> {
     // create tmp dir
     let tmp_dir = TempDir::new("zkbitcoin_").expect("couldn't create tmp dir");
 
     // compile
     let CompilationResult {
-        verifier_key: _,
+        verifier_key,
         circuit_r1cs_path,
         prover_key_path,
-    } = compile(tmp_dir, circom_circuit_path, srs_path)?;
+    } = compile(tmp_dir, circom_circuit_path)?;
 
     // write inputs to file
     let public_inputs_path = tmp_dir.path().join("public_inputs.json");
@@ -187,12 +188,12 @@ pub fn prove(
     // clean up
     remove_dir_all(tmp_dir).expect("failed to remove temp dir");
 
-    Ok((proof, full_public_inputs))
+    Ok((proof, full_public_inputs, verifier_key))
 }
 
 pub fn verify_proof(
     vk: &plonk::VerifierKey,
-    public_inputs: &plonk::ProofInputs,
+    public_inputs: &[String],
     proof: &plonk::Proof,
 ) -> Result<()> {
     // create tmp dir
@@ -250,28 +251,27 @@ mod tests {
             .join("examples")
             .join("circuit");
         let circom_circuit_path = circuit_dir.join("circuit.circom");
-        let srs_path = circuit_dir.join("srs.ptau");
 
-        // compile to get VK
-        let vk = {
-            let tmp_dir = TempDir::new("zkbitcoin_").expect("couldn't create tmp dir");
-            let CompilationResult {
-                verifier_key,
-                circuit_r1cs_path: _,
-                prover_key_path: _,
-            } = compile(tmp_dir, &circom_circuit_path, &srs_path).unwrap();
+        // // compile to get VK
+        // let vk = {
+        //     let tmp_dir = TempDir::new("zkbitcoin_").expect("couldn't create tmp dir");
+        //     let CompilationResult {
+        //         verifier_key,
+        //         circuit_r1cs_path: _,
+        //         prover_key_path: _,
+        //     } = compile(tmp_dir, &circom_circuit_path).unwrap();
 
-            // clean up
-            remove_dir_all(tmp_dir).expect("failed to remove temp dir");
+        //     // clean up
+        //     remove_dir_all(tmp_dir).expect("failed to remove temp dir");
 
-            verifier_key
-        };
+        //     verifier_key
+        // };
 
         // prove
         let mut public_inputs = HashMap::new();
-        let (proof, full_inputs) = prove(&circom_circuit_path, &srs_path, public_inputs).unwrap();
+        let (proof, full_inputs, vk) = prove(&circom_circuit_path, public_inputs).unwrap();
 
         // verify
-        verify_proof(&vk, &full_inputs, &proof).unwrap();
+        verify_proof(&vk, &full_inputs.0, &proof).unwrap();
     }
 }
