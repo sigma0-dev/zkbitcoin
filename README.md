@@ -120,7 +120,7 @@ RPC_WALLET="mywallet" RPC_ADDRESS="http://146.190.33.39:18331" RPC_AUTH="root:he
 Alice can deploy a stateful zkapp (for example, `examples/circuit/stateful.circom`) with the following command:
 
 ```shell
-RPC_WALLET="mywallet" RPC_ADDRESS="http://146.190.33.39:18331" RPC_AUTH="root:hellohello" cargo run --bin cli -- deploy-transaction --circom-circuit-path examples/circuit/stateful.circom --initial-state '["0"]' --satoshi-amount 1000
+RPC_WALLET="mywallet" RPC_ADDRESS="http://146.190.33.39:18331" RPC_AUTH="root:hellohello" cargo run --bin cli -- deploy-transaction --circom-circuit-path examples/circuit/stateful.circom --initial-state '["1"]' --satoshi-amount 1000     
 ```
 
 ### Unlock funds command

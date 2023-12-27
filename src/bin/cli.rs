@@ -52,7 +52,7 @@ enum Commands {
 
         /// Optionally, for stateful zkapps, an initial state.
         #[arg(short, long)]
-        initial_state: Option<Vec<String>>,
+        initial_state: Option<String>,
 
         /// The amount in satoshis to send to the smart contract.
         #[arg(short, long)]
@@ -256,7 +256,9 @@ async fn main() -> Result<()> {
             );
 
             // sanity check for stateful zkapps
-            if num_public_inputs > 1 {
+            let initial_state = if num_public_inputs == 1 {
+                vec![]
+            } else {
                 let double_state_len = vk.nPublic - 3; /* txid, amount_in, amount_out */
                 let state_len = double_state_len.checked_div(2).context("the VK")?;
                 {
@@ -264,18 +266,21 @@ async fn main() -> Result<()> {
                     assert_eq!(state_len * 2, double_state_len);
                 }
 
+                // parse initial state
+                let initial_state = initial_state
+                    .clone()
+                    .context("an initial state should be passed for stateful zkapps")?;
+                let initial_state: Vec<String> = serde_json::from_str(&initial_state)?;
+
                 ensure!(
-                    state_len
-                        == initial_state
-                            .clone()
-                            .context("an initial state should be passed for stateful zkapps")?
-                            .len(),
-                    "the given initial state doesn't match the size of the circuit state"
+                    state_len == initial_state.len(),
+                    "the given initial state doesn't match the expected size of the circuit state ({state_len})"
                 );
-            }
+
+                initial_state
+            };
 
             // generate and broadcast deploy transaction
-            let initial_state = initial_state.clone().unwrap_or_default();
             let txid =
                 generate_and_broadcast_transaction(&ctx, &vk_hash, initial_state, *satoshi_amount)
                     .await
