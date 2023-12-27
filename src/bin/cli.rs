@@ -1,4 +1,9 @@
-use std::{collections::HashMap, path::PathBuf, str::FromStr};
+use std::{
+    collections::HashMap,
+    env,
+    path::{Path, PathBuf},
+    str::FromStr,
+};
 
 use anyhow::{ensure, Context, Result};
 use bitcoin::{Address, Txid};
@@ -189,14 +194,16 @@ async fn main() -> Result<()> {
                 auth.clone(),
             );
 
+            let circom_circuit_path = env::current_dir()?.join(circom_circuit_path);
+
             // compile to get VK (and its digest)
             let (vk, vk_hash) = {
-                let tmp_dir = TempDir::new("zkbitcoin_").expect("couldn't create tmp dir");
+                let tmp_dir = TempDir::new("zkbitcoin_").context("couldn't create tmp dir")?;
                 let CompilationResult {
                     verifier_key,
                     circuit_r1cs_path: _,
                     prover_key_path: _,
-                } = snarkjs::compile(&tmp_dir, &circom_circuit_path).unwrap();
+                } = snarkjs::compile(&tmp_dir, &circom_circuit_path)?;
 
                 // verifier_key
 

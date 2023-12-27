@@ -49,6 +49,7 @@ pub fn compile(tmp_dir: &TempDir, circom_circuit_path: &Path) -> Result<Compilat
         println!("{}", String::from_utf8_lossy(&output.stdout));
 
         if !output.status.success() {
+            println!("{}", String::from_utf8_lossy(&output.stderr));
             bail!("couldn't compile circom circuit");
         }
     }
