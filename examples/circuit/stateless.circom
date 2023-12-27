@@ -7,9 +7,10 @@ template Main() {
 
     signal input preimage[1];
 
-    var hardcoded_value = 0x0;
+    var hardcoded_value = 17744324452969507964952966931655538206777558023197549666337974697819074895989;
 
     signal digest <== Poseidon(1)(preimage);
+    log(digest);
     digest === hardcoded_value;
 }
 

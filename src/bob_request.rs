@@ -55,6 +55,19 @@ fn string_to_amount(amount: &str) -> Result<Amount> {
 // Bob's side: form a request and send it to an endpoint
 //
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Update {
+    new_state: Vec<String>,
+    prev_state: Vec<String>,
+
+    /// The truncated txid should be rederived by the verifier.
+    #[serde(skip)]
+    truncated_txid: Option<String>,
+
+    amount_out: String,
+    amount_in: String,
+}
+
 /// A request from Bob to unlock funds from a smart contract should look like this.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BobRequest {
@@ -73,6 +86,7 @@ pub struct BobRequest {
     pub proof: plonk::Proof,
 
     /// All public inputs used in the proof (if any).
+    // TODO: replace with [Update]
     pub public_inputs: Vec<String>,
 }
 

@@ -25,7 +25,13 @@ pub fn compile(tmp_dir: &TempDir, circom_circuit_path: &Path) -> Result<Compilat
     let srs_path = circuit_dir.join("srs.ptau");
 
     // set up new paths for files that will be created
-    let circuit_r1cs_path = tmp_dir.path().join("circuit_r1cs.json");
+    let circuit_name = circom_circuit_path
+        .file_stem()
+        .context("failed to get circuit name from filename")?;
+
+    let circuit_r1cs_path = tmp_dir
+        .path()
+        .join(format!("{}.r1cs", circuit_name.to_string_lossy()));
     let prover_key_path = tmp_dir.path().join("prover_key.zkey");
     let verifier_key_path = tmp_dir.path().join("verifier_key.json");
 
@@ -43,7 +49,7 @@ pub fn compile(tmp_dir: &TempDir, circom_circuit_path: &Path) -> Result<Compilat
         println!("{}", String::from_utf8_lossy(&output.stdout));
 
         if !output.status.success() {
-            bail!("failed to verify proof");
+            bail!("couldn't compile circom circuit");
         }
     }
 
@@ -63,7 +69,7 @@ pub fn compile(tmp_dir: &TempDir, circom_circuit_path: &Path) -> Result<Compilat
         println!("{}", String::from_utf8_lossy(&output.stdout));
 
         if !output.status.success() {
-            bail!("failed to verify proof");
+            bail!("couldn't create prover key");
         }
     }
 
@@ -83,7 +89,7 @@ pub fn compile(tmp_dir: &TempDir, circom_circuit_path: &Path) -> Result<Compilat
         println!("{}", String::from_utf8_lossy(&output.stdout));
 
         if !output.status.success() {
-            bail!("failed to verify proof");
+            bail!("couldn't export verifier key");
         }
     }
 
@@ -105,7 +111,7 @@ pub fn compile(tmp_dir: &TempDir, circom_circuit_path: &Path) -> Result<Compilat
 // perhaps I can just use snarkjs as a library directly?
 pub fn prove(
     circom_circuit_path: &Path,
-    public_inputs: &HashMap<String, Vec<String>>,
+    proof_inputs: &HashMap<String, Vec<String>>,
 ) -> Result<(plonk::Proof, plonk::ProofInputs, plonk::VerifierKey)> {
     // create tmp dir
     let tmp_dir = TempDir::new("zkbitcoin_").expect("couldn't create tmp dir");
@@ -118,9 +124,9 @@ pub fn prove(
     } = compile(&tmp_dir, circom_circuit_path)?;
 
     // write inputs to file
-    let public_inputs_path = tmp_dir.path().join("public_inputs.json");
+    let public_inputs_path = tmp_dir.path().join("proof_inputs.json");
     let mut tmp_file = File::create(&public_inputs_path).expect("file creation failed");
-    serde_json::to_writer(&mut tmp_file, &public_inputs).expect("write failed");
+    serde_json::to_writer(&mut tmp_file, &proof_inputs).expect("write failed");
 
     // set up new paths for files that will be created
     let witness_path = tmp_dir.path().join("witness.json");
@@ -129,7 +135,6 @@ pub fn prove(
 
     // create witness using circom
     {
-        // node output/circuit_js/generate_witness.js output/circuit_js/circuit.wasm public_input.json output/witness.wtns
         let circuit_name = circom_circuit_path
             .file_stem()
             .context("failed to get circuit name from filename")?;
@@ -138,8 +143,9 @@ pub fn prove(
             .join(format!("{}_js", circuit_name.to_string_lossy()));
         let generate_witness_path = output_folder.join("generate_witness.js");
         let circuit_wasm_path =
-            output_folder.join(format!("{}_wasm.js", circuit_name.to_string_lossy()));
+            output_folder.join(format!("{}.wasm", circuit_name.to_string_lossy()));
 
+        // node output/circuit_js/generate_witness.js output/circuit_js/circuit.wasm public_input.json output/witness.wtns
         let output = Command::new("node")
             .current_dir(&tmp_dir)
             .arg(generate_witness_path)
@@ -152,7 +158,8 @@ pub fn prove(
         println!("{}", String::from_utf8_lossy(&output.stdout));
 
         if !output.status.success() {
-            bail!("failed to verify proof");
+            println!("{}", String::from_utf8_lossy(&output.stderr));
+            bail!("couldn't create witness");
         }
     }
 
@@ -172,7 +179,7 @@ pub fn prove(
         println!("{}", String::from_utf8_lossy(&output.stdout));
 
         if !output.status.success() {
-            bail!("failed to verify proof");
+            bail!("couldn't create proof");
         }
     }
 
@@ -237,6 +244,28 @@ pub fn verify_proof(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn full_path_from(path: &Path) -> PathBuf {
+        PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap()).join(path)
+    }
+
+    #[test]
+    fn prove_stateless() {
+        let circom_circuit_path = full_path_from(Path::new("examples/circuit/stateless.circom"));
+        let mut proof_inputs = HashMap::new();
+        proof_inputs.insert("txid".to_string(), vec!["0".to_string()]);
+        proof_inputs.insert(
+            "preimage".to_string(),
+            vec![
+                "18586133768512220936620570745912940619677854269274689475585506675881198879027"
+                    .to_string(),
+            ],
+        );
+        let (proof, full_inputs, vk) = prove(&circom_circuit_path, &proof_inputs).unwrap();
+
+        // verify
+        verify_proof(&vk, &full_inputs.0, &proof).unwrap();
+    }
 
     #[test]
     fn test_prove_and_verify() {

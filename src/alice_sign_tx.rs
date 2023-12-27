@@ -23,7 +23,7 @@ pub fn p2tr_script_to(zkbitcoin_pubkey: PublicKey) -> ScriptBuf {
 pub async fn generate_and_broadcast_transaction(
     ctx: &RpcCtx,
     vk_hash: &[u8; 32],
-    public_inputs: Vec<String>,
+    initial_state: Vec<String>,
     satoshi_amount: u64,
 ) -> Result<bitcoin::Txid> {
     // 1. create transaction based on VK + amount
@@ -51,15 +51,15 @@ pub async fn generate_and_broadcast_transaction(
         }
 
         // other outputs are the initial state (for statefull zkapps)
-        if public_inputs.is_empty() {
+        if initial_state.is_empty() {
             println!("- stateless zkapp detected");
         } else {
             println!(
                 "- stateful zkapp detected (with {} public inputs)",
-                public_inputs.len()
+                initial_state.len()
             );
 
-            for pi in public_inputs {
+            for pi in initial_state {
                 let thing: &bitcoin::script::PushBytes = pi.as_bytes().try_into().unwrap();
                 let script_pubkey = ScriptBuf::new_op_return(thing);
                 let value = script_pubkey.dust_value();
