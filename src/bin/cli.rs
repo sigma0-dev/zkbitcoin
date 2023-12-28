@@ -1,9 +1,4 @@
-use std::{
-    collections::HashMap,
-    env,
-    path::{Path, PathBuf},
-    str::FromStr,
-};
+use std::{collections::HashMap, env, path::PathBuf, str::FromStr};
 
 use anyhow::{ensure, Context, Result};
 use bitcoin::{Address, Txid};
@@ -203,7 +198,7 @@ async fn main() -> Result<()> {
                     verifier_key,
                     circuit_r1cs_path: _,
                     prover_key_path: _,
-                } = snarkjs::compile(&tmp_dir, &circom_circuit_path)?;
+                } = snarkjs::compile(&tmp_dir, &circom_circuit_path).await?;
 
                 // verifier_key
 
@@ -306,88 +301,6 @@ async fn main() -> Result<()> {
                 address.clone(),
                 auth.clone(),
             );
-            // get proof, vk, and inputs
-            // let proof: plonk::Proof = {
-            //     let full_path = PathBuf::from(proof_path);
-            //     let file = std::fs::File::open(&full_path)
-            //         .unwrap_or_else(|_| panic!("file not found at path: {:?}", full_path));
-            //     serde_json::from_reader(file).expect("error while reading file")
-            // };
-            // let vk: plonk::VerifierKey = {
-            //     let full_path = PathBuf::from(verifier_key_path);
-            //     let file = std::fs::File::open(&full_path)
-            //         .unwrap_or_else(|_| panic!("file not found at path: {:?}", full_path));
-            //     serde_json::from_reader(file).expect("error while reading file")
-            // };
-            // let public_inputs: Vec<String> = if let Some(path) = inputs_path {
-            //     let full_path = PathBuf::from(path);
-            //     let file = std::fs::File::open(&full_path)
-            //         .unwrap_or_else(|_| panic!("file not found at path: {:?}", full_path));
-            //     let proof_inputs: plonk::ProofInputs =
-            //         serde_json::from_reader(file).expect("error while reading file");
-            //     proof_inputs.0
-            // } else {
-            //     vec![]
-            // };
-
-            // create public input
-            // let full_public_inputs = {
-            //     let mut res = vec![];
-
-            //     // parse proof inputs
-            //     let proof_inputs: HashMap<String, Vec<String>> =
-            //         serde_json::from_str(proof_inputs)?;
-
-            //     let extract = |name, len| {
-            //         let var = proof_inputs
-            //             .get(name)
-            //             .context("the proof inputs must at least contain a `{name}`")?;
-            //         if let Some(len) = len {
-            //             let var_len = var.len();
-            //             ensure!(var_len == len, "`{name}`" has a length of {var_len} instead of the expected length of {len});
-            //             var
-            //         }
-            //     };
-
-            //     let truncated_txid = extract("truncated_tixd", Some(1))?;
-
-            //     // if there's more than one key, it's a stateful app
-            //     let res = if proof_inputs.len() > 1 {
-            //         let prev_state = extract("prev_state", Some(new_state.len()))?;
-            //         extract("amount_in", Some(1))?;
-            //         extract("amount_out", Some(1))?;
-            //         itertools::chain!(new_state, prev_state, truncated_tixd, amount_out, amount_in)
-            //             .collect_vec()
-            //     } else {
-            //         truncated_txid
-            //     };
-            // };
-
-            // sanitize proof inputs
-            if let Some(proof_inputs) = &proof_inputs {
-                ensure!(
-                    !proof_inputs.contains("truncated_txid"),
-                    "the transaction ID is provided"
-                );
-                ensure!(
-                    proof_inputs.contains("amount_in"),
-                    "expected field `prev_state` was not present in proof inputs"
-                );
-                ensure!(
-                    proof_inputs.contains("amount_in"),
-                    "expected field `amount_out` was not present in proof inputs"
-                );
-                ensure!(
-                    proof_inputs.contains("amount_in"),
-                    "expected field `amount_in` was not present in proof inputs"
-                );
-            }
-
-            // parse Bob address
-            let bob_address = Address::from_str(recipient_address)
-                .unwrap()
-                .require_network(get_network())
-                .unwrap();
 
             // parse proof inputs
             let proof_inputs: HashMap<String, Vec<String>> = if let Some(s) = &proof_inputs {
@@ -395,6 +308,12 @@ async fn main() -> Result<()> {
             } else {
                 HashMap::new()
             };
+
+            // parse Bob address
+            let bob_address = Address::from_str(recipient_address)
+                .unwrap()
+                .require_network(get_network())
+                .unwrap();
 
             // parse transaction ID
             let txid = Txid::from_str(txid)?;

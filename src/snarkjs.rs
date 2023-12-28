@@ -8,21 +8,21 @@ use std::{
 use anyhow::{bail, Context, Result};
 use tempdir::TempDir;
 
-use crate::plonk::{self, VerifierKey};
+use crate::{
+    plonk::{self},
+    srs,
+};
 
 pub struct CompilationResult {
-    pub verifier_key: VerifierKey,
+    pub verifier_key: plonk::VerifierKey,
     pub circuit_r1cs_path: PathBuf,
     pub prover_key_path: PathBuf,
 }
 
 /// Compiles a circom circuit to a wasm and r1cs file.
-pub fn compile(tmp_dir: &TempDir, circom_circuit_path: &Path) -> Result<CompilationResult> {
+pub async fn compile(tmp_dir: &TempDir, circom_circuit_path: &Path) -> Result<CompilationResult> {
     // SRS
-    let circuit_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap())
-        .join("examples")
-        .join("circuit");
-    let srs_path = circuit_dir.join("srs.ptau");
+    let srs_path = srs::srs_path().await;
 
     // set up new paths for files that will be created
     let circuit_name = circom_circuit_path
@@ -110,10 +110,10 @@ pub fn compile(tmp_dir: &TempDir, circom_circuit_path: &Path) -> Result<Compilat
 
 // should we implement these things?
 // perhaps I can just use snarkjs as a library directly?
-pub fn prove(
+pub async fn prove(
     circom_circuit_path: &Path,
     proof_inputs: &HashMap<String, Vec<String>>,
-) -> Result<(plonk::Proof, plonk::ProofInputs, plonk::VerifierKey)> {
+) -> Result<(plonk::Proof, plonk::PublicInputs, plonk::VerifierKey)> {
     // create tmp dir
     let tmp_dir = TempDir::new("zkbitcoin_").expect("couldn't create tmp dir");
 
@@ -122,7 +122,7 @@ pub fn prove(
         verifier_key,
         circuit_r1cs_path: _,
         prover_key_path,
-    } = compile(&tmp_dir, circom_circuit_path)?;
+    } = compile(&tmp_dir, circom_circuit_path).await?;
 
     // write inputs to file
     let public_inputs_path = tmp_dir.path().join("proof_inputs.json");
@@ -190,7 +190,7 @@ pub fn prove(
 
     let full_public_inputs_file =
         File::open(full_public_inputs_path).expect("file creation failed");
-    let full_public_inputs: plonk::ProofInputs =
+    let full_public_inputs: plonk::PublicInputs =
         serde_json::from_reader(full_public_inputs_file).expect("read failed");
 
     Ok((proof, full_public_inputs, verifier_key))
@@ -250,8 +250,8 @@ mod tests {
         PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap()).join(path)
     }
 
-    #[test]
-    fn prove_stateless() {
+    #[tokio::test]
+    async fn prove_stateless() {
         let circom_circuit_path = full_path_from(Path::new("examples/circuit/stateless.circom"));
         let mut proof_inputs = HashMap::new();
         proof_inputs.insert("txid".to_string(), vec!["0".to_string()]);
@@ -262,14 +262,14 @@ mod tests {
                     .to_string(),
             ],
         );
-        let (proof, full_inputs, vk) = prove(&circom_circuit_path, &proof_inputs).unwrap();
+        let (proof, full_inputs, vk) = prove(&circom_circuit_path, &proof_inputs).await.unwrap();
 
         // verify
         verify_proof(&vk, &full_inputs.0, &proof).unwrap();
     }
 
-    #[test]
-    fn test_prove_and_verify() {
+    #[tokio::test]
+    async fn test_prove_and_verify() {
         // get circuit and others
         let circuit_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap())
             .join("examples")
@@ -288,8 +288,8 @@ mod tests {
         // };
 
         // prove
-        let mut public_inputs = HashMap::new();
-        let (proof, full_inputs, vk) = prove(&circom_circuit_path, &public_inputs).unwrap();
+        let public_inputs = HashMap::new();
+        let (proof, full_inputs, vk) = prove(&circom_circuit_path, &public_inputs).await.unwrap();
 
         // verify
         verify_proof(&vk, &full_inputs.0, &proof).unwrap();

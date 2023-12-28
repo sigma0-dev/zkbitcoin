@@ -128,7 +128,7 @@ RPC_WALLET="mywallet" RPC_ADDRESS="http://146.190.33.39:18331" RPC_AUTH="root:he
 Bob can unlock funds with the following command:
 
 ```shell
-ENDPOINT="http://127.0.0.1:6666" cargo run --bin cli -- unlock-funds-request --txid "10b675d8673448b4e20d6d1db9437c9771c2666f4e350abba76657cc6fce318b" --verifier-key-path examples/circuit/vk.json --inputs-path examples/circuit/proof_inputs.json --proof-path examples/circuit/proof.json --recipient-address "tb1q6nkpv2j9lxrm6h3w4skrny3thswgdcca8cx9k6"
+ENDPOINT="http://127.0.0.1:6666" RPC_WALLET="mywallet" RPC_ADDRESS="http://146.190.33.39:18331" RPC_AUTH="root:hellohello" cargo run --bin cli -- unlock-funds-request --txid "e793bdd8dfdd9912d971790a5f385ad3f1215dce97e25dbefe5449faba632836" --circom-circuit-path examples/circuit/stateless.circom --proof-inputs '{"preimage":["1"]}' --recipient-address "tb1q6nkpv2j9lxrm6h3w4skrny3thswgdcca8cx9k6"
 ```
 
 The `ENDPOINT` environment variable is the URL of the orchestrator (see next section).

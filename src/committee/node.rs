@@ -101,8 +101,9 @@ async fn round_1_signing(
     };
 
     // validate request
+    let bob_txid = bob_request.tx.txid();
     let smart_contract = match bob_request
-        .validate_request(&context.bitcoin_rpc_ctx, smart_contract)
+        .validate_request(&context.bitcoin_rpc_ctx, smart_contract, bob_txid)
         .await
     {
         Ok(x) => x,

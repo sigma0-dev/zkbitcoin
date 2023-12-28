@@ -21,12 +21,12 @@ use secp256k1::XOnlyPublicKey;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    bob_request::{BobRequest, BobResponse},
+    bob_request::BobRequest,
     committee::node::Round1Response,
-    constants::{FEE_BITCOIN_SAT, FEE_ZKBITCOIN_SAT, ZKBITCOIN_PUBKEY},
+    constants::ZKBITCOIN_PUBKEY,
     frost,
     json_rpc_stuff::{json_rpc_request, send_raw_transaction, RpcCtx, TransactionOrHex},
-    mpc_sign_tx::{create_transaction, get_digest_to_hash},
+    mpc_sign_tx::get_digest_to_hash,
 };
 
 use super::node::{Round2Request, Round2Response};
@@ -73,7 +73,7 @@ impl Orchestrator {
         //
 
         let smart_contract = bob_request
-            .validate_request(&self.bitcoin_rpc_ctx, None)
+            .validate_request(&self.bitcoin_rpc_ctx, None, bob_request.tx.txid())
             .await?;
 
         //

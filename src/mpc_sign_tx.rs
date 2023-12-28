@@ -14,7 +14,7 @@ use secp256k1::{hashes::Hash, All, Secp256k1, XOnlyPublicKey};
 use crate::{
     alice_sign_tx::p2tr_script_to,
     bob_request::SmartContract,
-    constants::{FEE_BITCOIN_SAT, FEE_ZKBITCOIN_SAT, ZKBITCOIN_FEE_PUBKEY},
+    constants::{FEE_ZKBITCOIN_SAT, ZKBITCOIN_FEE_PUBKEY},
     json_rpc_stuff::{
         fund_raw_transaction, send_raw_transaction, sign_transaction, TransactionOrHex,
     },
@@ -81,9 +81,7 @@ pub fn create_transaction(
     }
 
     // we need to subtract the amount to cover for the fee
-    let amount_for_bob = smart_contract.locked_value
-        - Amount::from_sat(FEE_BITCOIN_SAT)
-        - Amount::from_sat(FEE_ZKBITCOIN_SAT);
+    let amount_for_bob = smart_contract.locked_value - Amount::from_sat(FEE_ZKBITCOIN_SAT);
 
     {
         // first output is a P2TR to Bob

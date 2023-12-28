@@ -20,8 +20,7 @@ pub const MINIMUM_CONFIRMATIONS: i32 = 0; // TODO: bad in prod?
 /// The JSON-RPC version to use with bitcoind.
 pub const BITCOIN_JSON_RPC_VERSION: &str = "1.0";
 
+/// The fee payable to the zkBitcoin fund.
 pub const FEE_ZKBITCOIN_SAT: u64 = 100;
-
-pub const FEE_BITCOIN_SAT: u64 = 143;
 
 pub const ORCHESTRATOR_ADDRESS: &str = "127.0.0.1:6666";
