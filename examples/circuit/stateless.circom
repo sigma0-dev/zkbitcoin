@@ -3,7 +3,7 @@ pragma circom 2.1.3;
 include "./circom_lib/poseidon.circom";
 
 template Main() {
-    signal input txid;
+    signal input truncated_txid;
 
     signal input preimage[1];
 
@@ -14,4 +14,4 @@ template Main() {
     digest === hardcoded_value;
 }
 
-component main{public [txid]} = Main();
+component main{public [truncated_txid]} = Main();

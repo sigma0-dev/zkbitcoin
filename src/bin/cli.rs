@@ -302,6 +302,9 @@ async fn main() -> Result<()> {
                 auth.clone(),
             );
 
+            // parse circom circuit path
+            let circom_circuit_path = env::current_dir()?.join(circom_circuit_path);
+
             // parse proof inputs
             let proof_inputs: HashMap<String, Vec<String>> = if let Some(s) = &proof_inputs {
                 serde_json::from_str(s)?
@@ -323,7 +326,7 @@ async fn main() -> Result<()> {
                 &rpc_ctx,
                 bob_address,
                 txid,
-                circom_circuit_path,
+                &circom_circuit_path,
                 proof_inputs,
             )
             .await?;

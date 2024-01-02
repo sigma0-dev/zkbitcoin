@@ -254,7 +254,7 @@ mod tests {
     async fn prove_stateless() {
         let circom_circuit_path = full_path_from(Path::new("examples/circuit/stateless.circom"));
         let mut proof_inputs = HashMap::new();
-        proof_inputs.insert("txid".to_string(), vec!["0".to_string()]);
+        proof_inputs.insert("truncated_txid".to_string(), vec!["0".to_string()]);
         proof_inputs.insert(
             "preimage".to_string(),
             vec![

@@ -1,4 +1,4 @@
-use std::{collections::HashMap, path::Path, str::FromStr};
+use std::{collections::HashMap, path::Path, str::FromStr, vec};
 
 use anyhow::{bail, ensure, Context, Result};
 use bitcoin::{
@@ -12,7 +12,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     alice_sign_tx::p2tr_script_to,
-    constants::{FEE_ZKBITCOIN_SAT, MINIMUM_CONFIRMATIONS, ZKBITCOIN_FEE_PUBKEY, ZKBITCOIN_PUBKEY},
+    constants::{
+        FEE_ZKBITCOIN_SAT, MINIMUM_CONFIRMATIONS, ZKBITCOIN_ADDRESS, ZKBITCOIN_FEE_ADDRESS,
+        ZKBITCOIN_FEE_PUBKEY, ZKBITCOIN_PUBKEY,
+    },
     json_rpc_stuff::{fund_raw_transaction, json_rpc_request, TransactionOrHex},
     plonk::PublicInputs,
     snarkjs::{self, verify_proof},
@@ -108,6 +111,7 @@ impl BobRequest {
         let new_state = if smart_contract.is_stateful() {
             // truncated_txid = 0
             proof_inputs.insert("truncated_txid".to_string(), vec!["0".to_string()]);
+            proof_inputs.insert("prev_state".to_string(), smart_contract.prev_state()?);
 
             // prove
             let (_proof, public_inputs, _vk) =
@@ -219,6 +223,133 @@ impl BobRequest {
             }
         };
 
+        if true {
+            println!("tx1: {:?}", tx);
+            let mut tx_hex = bitcoin::consensus::encode::serialize_hex(&tx);
+            tx_hex.push_str("00000000");
+            println!("tx_hex: {}", tx_hex);
+            let tx2: Transaction =
+                bitcoin::consensus::encode::deserialize(&hex::decode(&tx_hex).unwrap()).unwrap();
+            println!("tx2: {:?}", tx2);
+            let params = &[
+                // tx
+                serde_json::value::to_raw_value(&serde_json::Value::String(tx_hex)).unwrap(),
+                // permitsigdata
+                //serde_json::value::to_raw_value(&serde_json::Value::Bool(false)).unwrap(),
+                // iswitness
+                //serde_json::value::to_raw_value(&serde_json::Value::Bool(false)).unwrap(),
+            ];
+            println!("{}", serde_json::to_string(params).unwrap());
+            let response = json_rpc_request(rpc_ctx, "converttopsbt", params)
+                .await
+                .context("converttopsbt error")?;
+
+            // TODO: get rid of unwrap in here
+            let response: bitcoincore_rpc::jsonrpc::Response =
+                serde_json::from_str(&response).unwrap();
+            println!("{:?}", response);
+            panic!("yo!");
+        }
+
+        // TODO: is this the way forward?
+        if false {
+            // let's try to create the same transaction but using `walletcreatefundedpsbt`
+            /*
+            walletcreatefundedpsbt ( [{"txid":"hex","vout":n,"sequence":n},...] ) [{"address":amount},{"data":"hex"},...] ( locktime options bip32derivs )
+             */
+            let inputs = vec![
+                // the zkapp being used
+                serde_json::json!({
+                    "txid": txid.to_string(),
+                    "vout": smart_contract.vout_of_zkbitcoin_utxo,
+                }),
+            ];
+
+            let mut outputs = vec![
+                // first output is to zkBitcoinFund
+                serde_json::json!({
+                    ZKBITCOIN_FEE_ADDRESS.to_string(): Amount::from_sat(FEE_ZKBITCOIN_SAT).to_string_in(Denomination::Bitcoin),
+                }),
+            ];
+
+            if smart_contract.is_stateless() {
+                // move all the funds to Bob's address
+                outputs.push(
+                serde_json::json!({
+                    bob_address.to_string(): smart_contract.locked_value.to_string_in(Denomination::Bitcoin),
+                }));
+            } else {
+                // the new locked value to zkBitcoin
+                let amount_in = string_to_amount(
+                    proof_inputs
+                        .get("amount_in")
+                        .and_then(|x| x.get(0))
+                        .context("amount_in in proof inputs must be of length 1")?,
+                )?;
+                let amount_out = string_to_amount(
+                    proof_inputs
+                        .get("amount_out")
+                        .and_then(|x| x.get(0))
+                        .context("amount_out in proof inputs must be of length 1")?,
+                )?;
+                let new_value = smart_contract.locked_value + amount_in - amount_out;
+
+                // Bob can only withdraw amount_out
+                outputs.push(serde_json::json!({
+                    bob_address.to_string(): amount_out.to_string_in(Denomination::Bitcoin),
+                }));
+
+                // the updated zkapp
+                outputs.push(serde_json::json!({
+                    ZKBITCOIN_ADDRESS.to_string(): new_value.to_string_in(Denomination::Bitcoin)
+                }));
+
+                // its vk + new state
+                let mut data = vec![hex::encode(smart_contract.vk_hash)];
+                for state_i in new_state.as_ref().unwrap() {
+                    data.push(hex::encode(state_i));
+                }
+                outputs.push(serde_json::json!({
+                    "data": data,
+                }));
+            }
+
+            // woop woop
+            let change_position = outputs.len(); // place change at the end of the outputs
+            let params = &[
+                // inputs
+                serde_json::value::to_raw_value(&serde_json::Value::Array(inputs)).unwrap(),
+                // outputs
+                serde_json::value::to_raw_value(&serde_json::Value::Array(outputs)).unwrap(),
+                // lock time
+                serde_json::value::to_raw_value(&serde_json::Number::from(0)).unwrap(),
+                // params
+                serde_json::value::to_raw_value(&serde_json::json!({
+                    "add_inputs": true,
+                    "changePosition": change_position,
+                }))
+                .unwrap(),
+            ];
+            println!("{}", serde_json::to_string(params).unwrap());
+            let response = json_rpc_request(rpc_ctx, "walletcreatefundedpsbt", params)
+                .await
+                .context("walletcreatefundedpsbt error")?;
+
+            // TODO: get rid of unwrap in here
+            let response: bitcoincore_rpc::jsonrpc::Response =
+                serde_json::from_str(&response).unwrap();
+            println!("{:?}", response);
+            let res: bitcoincore_rpc::json::WalletCreateFundedPsbtResult =
+                response.result().unwrap();
+            println!("{:?}", res);
+            panic!("yo!");
+        }
+
+        println!(
+            "- created transaction, will now ask wallet to fund it ({})",
+            bitcoin::consensus::encode::serialize_hex(&tx)
+        );
+
         // add truncated txid to proof inputs
         {
             let txid = tx.txid();
@@ -292,6 +423,8 @@ impl BobRequest {
     /// It checks outputs, but not inputs.
     /// The caller will be in charge of retrieving the smart contract and verifying its execution.
     fn validate_transaction(&self, smart_contract: &SmartContract) -> Result<()> {
+        // TODO: we need to make sure that amount_out < smart_contract.locked_value
+
         // it must contain an output fee paid to zkBitcoinFund
         self.tx
             .output
@@ -458,6 +591,19 @@ pub struct SmartContract {
 impl SmartContract {
     fn state_len(&self) -> usize {
         self.public_inputs.len()
+    }
+
+    fn prev_state(&self) -> Result<Vec<String>> {
+        let res: Result<Vec<String>> = self
+            .public_inputs
+            .iter()
+            .map(|x| {
+                // TODO: probably not the most compact encoding
+                String::from_utf8(x.to_vec())
+                    .context("public input does not contain a valid utf8 string")
+            })
+            .collect();
+        res
     }
 
     fn updated_value(&self, request: &BobRequest) -> Result<Amount> {

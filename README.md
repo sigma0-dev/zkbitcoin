@@ -72,10 +72,13 @@ bitcoin-cli -testnet -rpcconnect=146.190.33.39 -rpcport=18331 -rpcuser=root -rpc
 
 (I believe we can switch wallets by using the `loadwallet` command.)
 
-Some addresses I've been using:
+The addresses I've been using:
 
-* `tb1q5pxn428emp73saglk7ula0yx5j7ehegu6ud6ad` <-- I put some bitcoins in there from [this faucet](https://bitcoinfaucet.uo1.net/send.php) (you can see the wallet on [this explorer](https://blockstream.info/testnet/address/tb1q5pxn428emp73saglk7ula0yx5j7ehegu6ud6ad) where 141 satoshis were paid as fee)
-* `tb1q6nkpv2j9lxrm6h3w4skrny3thswgdcca8cx9k6`
+* `tb1q5pxn428emp73saglk7ula0yx5j7ehegu6ud6ad`: the zkBitcoin address, where zkapps have to be sent to
+* `tb1q6nkpv2j9lxrm6h3w4skrny3thswgdcca8cx9k6`: the zkBitcoin fund, where fees are being paid to when using zkapps (deploying is free)
+* `tb1q6vjawwska63qxf77rrm5uwqev0ma8as8d0mkrt`: Bob address.
+
+It's a good idea to fund them from times to times using [a faucet](https://bitcoinfaucet.uo1.net/send.php).
 
 Note that you can get their associated public keys via:
 
@@ -128,7 +131,7 @@ RPC_WALLET="mywallet" RPC_ADDRESS="http://146.190.33.39:18331" RPC_AUTH="root:he
 Bob can unlock funds with the following command:
 
 ```shell
-ENDPOINT="http://127.0.0.1:6666" RPC_WALLET="mywallet" RPC_ADDRESS="http://146.190.33.39:18331" RPC_AUTH="root:hellohello" cargo run --bin cli -- unlock-funds-request --txid "e793bdd8dfdd9912d971790a5f385ad3f1215dce97e25dbefe5449faba632836" --circom-circuit-path examples/circuit/stateless.circom --proof-inputs '{"preimage":["1"]}' --recipient-address "tb1q6nkpv2j9lxrm6h3w4skrny3thswgdcca8cx9k6"
+ENDPOINT="http://127.0.0.1:6666" RPC_WALLET="mywallet" RPC_ADDRESS="http://146.190.33.39:18331" RPC_AUTH="root:hellohello" cargo run --bin cli -- unlock-funds-request --txid "e793bdd8dfdd9912d971790a5f385ad3f1215dce97e25dbefe5449faba632836" --circom-circuit-path examples/circuit/stateful.circom --proof-inputs '{"preimage":["1"]}' --recipient-address "tb1q6nkpv2j9lxrm6h3w4skrny3thswgdcca8cx9k6"
 ```
 
 The `ENDPOINT` environment variable is the URL of the orchestrator (see next section).

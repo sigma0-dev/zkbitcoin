@@ -7,6 +7,7 @@ pub mod constants;
 pub mod frost;
 pub mod json_rpc_stuff;
 pub mod plonk;
+//pub mod psbt;
 pub mod snarkjs;
 pub mod srs;
 
