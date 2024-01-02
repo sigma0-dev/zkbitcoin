@@ -85,7 +85,9 @@ Transaction {
 A statefull zkapp can be deployed with a transaction to `0xzkBitcoin` that contains two data field: 
 
 1. The digest of a verifier key.
-2. $N$ field elements that represent the initial state of the zkapp. If there's 0, the zkapp is treated as a stateless zkapp!
+2. 1 field element that represent the initial state of the zkapp. (If there's none the zkapp is treated as a stateless zkapp.)
+
+> Note: we are limited to 1 field element as Bitcoin nodes don't forward transactions with more than one `OP_RETURN` output. An `OP_RETURN` seems to be limited to pushing 80 bytes of data, as such we are quite limited here.
 
 In more detail, the transaction should look like this:
 
@@ -100,12 +102,11 @@ Transaction {
          value: /* amount locked */,
          script_pubkey: /* p2tr script to zkBitcoin */,
       },
-      // the first OP_RETURN output is the vk hash
+      // an OP_RETURN output containing the vk hash concatenated with the state
       TxOut {
          value: /* dust value */,
-         script_pubkey: /* OP_RETURN of VK hash */,
+         script_pubkey: /* OP_RETURN of VK hash and new state */,
       },
-      // further OP_RETURN outputs contain the initial state
       // arbitrary spendable outputs are also allowed...
    ],
 }
@@ -116,8 +117,8 @@ In order to spend such a transaction Bob needs to produce:
 1. The verifier key that hashes to that digest.
 2. An unsigned transaction that consumes a stateful zkapp (as input), and produces a fee to the zkBitcoin fund as well as a new stateful zkapp (as outputs). All other inputs and outputs are free.
 3. A number of public inputs in this order:
-   1. The previous state as $N$ field elements. (TODO: do we want to replace this with a poseidon hash? heh)
-   2. The new state as $N$ field elements (TODO: same question)
+   1. The previous state as 1 field element.
+   2. The new state as 1 field element.
    3. A truncated SHA-256 hash of the transaction id (authenticating the transaction).
    4. An amount `amount_out` to withdraw.
    5. An amount `amount_in`to deposit.
@@ -165,12 +166,11 @@ Transaction {
          value: /* the zkapp value updated to reflect amount_out and amount_in */,
          script_pubkey: /* locked for zkBitcoin */,
       },
-      // the first OP_RETURN output is the vk hash
+      // an OP_RETURN output containing the vk hash as well as the new state
       TxOut {
          value: /* dust value */,
-         script_pubkey: /* OP_RETURN of VK hash */,
+         script_pubkey: /* OP_RETURN of VK hash and new state */,
       },
-      // further OP_RETURN outputs contain the new state
       // arbitrary spendable outputs are also allowed...
    ],
 }
