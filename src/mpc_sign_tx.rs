@@ -1,13 +1,11 @@
-use std::collections::HashMap;
 use std::str::FromStr;
 
 use bitcoin::{
     absolute::LockTime,
-    key::{TweakedPublicKey, UntweakedPublicKey},
     sighash::{Prevouts, SighashCache},
     transaction::Version,
-    Address, Amount, OutPoint, PublicKey, ScriptBuf, Sequence, TapSighashType, TapTweakHash,
-    Transaction, TxIn, TxOut, Txid, Witness,
+    Address, Amount, OutPoint, PublicKey, ScriptBuf, Sequence, TapSighashType, Transaction, TxIn,
+    TxOut, Txid, Witness,
 };
 use secp256k1::{hashes::Hash, All, Secp256k1, XOnlyPublicKey};
 
@@ -183,6 +181,7 @@ async fn send_to_p2tr_pubkey(
 #[cfg(test)]
 mod tests {
 
+    use bitcoin::key::UntweakedPublicKey;
     use bitcoin::{taproot, Network, PrivateKey};
     use rand::prelude::*;
     use std::str::FromStr;

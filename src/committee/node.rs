@@ -16,7 +16,7 @@ use rand::thread_rng;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    bob_request::{BobRequest, BobResponse, SmartContract},
+    bob_request::{BobRequest, SmartContract},
     frost,
     json_rpc_stuff::RpcCtx,
     mpc_sign_tx::get_digest_to_hash,

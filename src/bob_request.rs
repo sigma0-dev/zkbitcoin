@@ -261,20 +261,31 @@ impl BobRequest {
             ];
 
             let fee_address = taproot_addr_from(ZKBITCOIN_FEE_PUBKEY)?;
+            let fee = Amount::from_sat(FEE_ZKBITCOIN_SAT).to_string_in(Denomination::Bitcoin);
+            println!(
+                "- first output is to zkBitcoinFund: {} for {} BTC",
+                fee_address, fee
+            );
 
             let mut outputs = vec![
                 // first output is to zkBitcoinFund
                 // TODO: we need to create a taproot address here
                 serde_json::json!({
-                    fee_address.to_string(): Amount::from_sat(FEE_ZKBITCOIN_SAT).to_string_in(Denomination::Bitcoin),
+                    fee_address.to_string(): fee,
                 }),
             ];
 
             if smart_contract.is_stateless() {
                 // move all the funds to Bob's address
-                outputs.push(
-                serde_json::json!({
-                    bob_address.to_string(): smart_contract.locked_value.to_string_in(Denomination::Bitcoin),
+                let amount_out = smart_contract
+                    .locked_value
+                    .to_string_in(Denomination::Bitcoin);
+                println!(
+                    "- stateless: second output is to ourselves: {} for {} BTC",
+                    bob_address, amount_out
+                );
+                outputs.push(serde_json::json!({
+                    bob_address.to_string(): amount_out,
                 }));
             } else {
                 // the new locked value to zkBitcoin
@@ -292,16 +303,31 @@ impl BobRequest {
                 )?;
                 let new_value = smart_contract.locked_value + amount_in - amount_out;
 
-                // Bob can only withdraw amount_out
-                outputs.push(serde_json::json!({
-                    bob_address.to_string(): amount_out.to_string_in(Denomination::Bitcoin),
-                }));
+                {
+                    let amount_in = amount_in.to_string_in(Denomination::Bitcoin);
+                    let new_value = new_value.to_string_in(Denomination::Bitcoin);
+                    let amount_out = amount_out.to_string_in(Denomination::Bitcoin);
+                    let locked = smart_contract
+                        .locked_value
+                        .to_string_in(Denomination::Bitcoin);
+                    println!("- stateful: Bob is attempting to deposit {amount_in} BTC, and withdraw {amount_out} BTC, from the zkapp's {locked} BTC");
+                    println!("- there will be {new_value} BTC locked in the zkapp after this transaction");
+                }
 
                 // the updated zkapp
                 let zkbitcoin_address = taproot_addr_from(ZKBITCOIN_PUBKEY)?;
+                println!(
+                    "- stateful: second output is to zkBitcoin: {} for {} BTC",
+                    zkbitcoin_address, new_value
+                );
                 outputs.push(serde_json::json!({
-                    // TODO: this is incorrect as it's not a taproot address
-                    zkbitcoin_address.to_string(): new_value.to_string_in(Denomination::Bitcoin)
+                    zkbitcoin_address.to_string(): new_value
+                }));
+
+                // Bob can only withdraw amount_out
+                println!("- Bob is receiving amount_out: {}", amount_out);
+                outputs.push(serde_json::json!({
+                    bob_address.to_string(): amount_out,
                 }));
 
                 // its vk + new state
