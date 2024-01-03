@@ -6,6 +6,7 @@ use std::{
 };
 
 use anyhow::{bail, Context, Result};
+use log::info;
 use tempdir::TempDir;
 
 use crate::{
@@ -46,10 +47,10 @@ pub async fn compile(tmp_dir: &TempDir, circom_circuit_path: &Path) -> Result<Co
             .output()
             .expect("failed to execute process");
 
-        println!("{}", String::from_utf8_lossy(&output.stdout));
+        info!("{}", String::from_utf8_lossy(&output.stdout));
 
         if !output.status.success() {
-            println!("{}", String::from_utf8_lossy(&output.stderr));
+            info!("{}", String::from_utf8_lossy(&output.stderr));
             bail!("couldn't compile circom circuit");
         }
     }
@@ -67,7 +68,7 @@ pub async fn compile(tmp_dir: &TempDir, circom_circuit_path: &Path) -> Result<Co
             .output()
             .expect("failed to execute process");
 
-        println!("{}", String::from_utf8_lossy(&output.stdout));
+        info!("{}", String::from_utf8_lossy(&output.stdout));
 
         if !output.status.success() {
             bail!("couldn't create prover key");
@@ -87,7 +88,7 @@ pub async fn compile(tmp_dir: &TempDir, circom_circuit_path: &Path) -> Result<Co
             .output()
             .expect("failed to execute process");
 
-        println!("{}", String::from_utf8_lossy(&output.stdout));
+        info!("{}", String::from_utf8_lossy(&output.stdout));
 
         if !output.status.success() {
             bail!("couldn't export verifier key");
@@ -156,10 +157,10 @@ pub async fn prove(
             .output()
             .expect("failed to execute process");
 
-        println!("{}", String::from_utf8_lossy(&output.stdout));
+        info!("{}", String::from_utf8_lossy(&output.stdout));
 
         if !output.status.success() {
-            println!("{}", String::from_utf8_lossy(&output.stderr));
+            info!("{}", String::from_utf8_lossy(&output.stderr));
             bail!("couldn't create witness");
         }
     }
@@ -177,7 +178,7 @@ pub async fn prove(
             .output()
             .expect("failed to execute process");
 
-        println!("{}", String::from_utf8_lossy(&output.stdout));
+        info!("{}", String::from_utf8_lossy(&output.stdout));
 
         if !output.status.success() {
             bail!("couldn't create proof");
@@ -231,7 +232,7 @@ pub fn verify_proof(
             .output()
             .expect("failed to execute process");
 
-        println!("{}", String::from_utf8_lossy(&output.stdout));
+        info!("{}", String::from_utf8_lossy(&output.stdout));
 
         if !output.status.success() {
             bail!("failed to verify proof");

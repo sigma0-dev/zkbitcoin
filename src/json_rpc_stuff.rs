@@ -4,7 +4,8 @@
 
 use anyhow::{Context, Result};
 use base64::{engine::general_purpose, Engine};
-use bitcoin::{Transaction, Txid};
+use bitcoin::{Amount, Transaction, Txid};
+use log::{debug, info, log_enabled, Level};
 use reqwest::{
     header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE},
     Client,
@@ -42,18 +43,18 @@ impl RpcCtx {
             auth,
         };
 
-        println!("- using RPC node at address {}", ctx.address());
+        info!("- using RPC node at address {}", ctx.address());
 
         if ctx.auth().is_some() {
-            println!("- using given RPC credentials");
+            info!("- using given RPC credentials");
         } else {
-            println!("- using no RPC credentials");
+            info!("- using no RPC credentials");
         }
 
         if let Some(wallet) = ctx.wallet() {
-            println!("- using wallet {wallet}");
+            info!("- using wallet {wallet}");
         } else {
-            println!("- using default wallet");
+            info!("- using default wallet");
         }
 
         ctx
@@ -137,9 +138,9 @@ pub async fn json_rpc_request<'a>(
         None => endpoint.to_string(),
     };
 
-    {
+    if log_enabled!(Level::Debug) {
         let body = serde_json::to_string_pretty(&request)?;
-        println!("- sending request to {url} with body: {body}");
+        debug!("- sending request to {url} with body: {body}");
     }
 
     let response = client
@@ -165,7 +166,7 @@ pub enum TransactionOrHex<'a> {
 pub async fn fund_raw_transaction<'a>(
     ctx: &RpcCtx,
     tx: TransactionOrHex<'a>,
-) -> Result<(String, Transaction)> {
+) -> Result<(String, Transaction, Amount)> {
     let tx_hex = match tx {
         TransactionOrHex::Hex(hex) => hex,
         TransactionOrHex::Transaction(tx) => bitcoin::consensus::encode::serialize_hex(tx),
@@ -186,10 +187,8 @@ pub async fn fund_raw_transaction<'a>(
     let parsed: bitcoincore_rpc::json::FundRawTransactionResult = response.result()?;
     let tx: Transaction = bitcoin::consensus::encode::deserialize(&parsed.hex)?;
     let actual_hex = hex::encode(&parsed.hex);
-    //println!("- funded tx: {tx:?}");
-    println!("- funded tx (in hex): {actual_hex}");
 
-    Ok((actual_hex, tx))
+    Ok((actual_hex, tx, parsed.fee))
 }
 
 pub async fn sign_transaction<'a>(
@@ -216,8 +215,6 @@ pub async fn sign_transaction<'a>(
     let parsed: bitcoincore_rpc::json::SignRawTransactionResult = response.result()?;
     let tx: Transaction = bitcoin::consensus::encode::deserialize(&parsed.hex)?;
     let actual_hex = hex::encode(&parsed.hex);
-    //println!("- signed tx: {tx:?}");
-    println!("- signed tx (in hex): {actual_hex}");
 
     Ok((actual_hex, tx))
 }
@@ -240,8 +237,6 @@ pub async fn send_raw_transaction<'a>(ctx: &RpcCtx, tx: TransactionOrHex<'a>) ->
 
     let response: bitcoincore_rpc::jsonrpc::Response = serde_json::from_str(&response)?;
     let txid: bitcoin::Txid = response.result()?;
-    println!("- txid broadcast to the network: {txid}");
-    println!("- on an explorer: https://blockstream.info/testnet/tx/{txid}");
 
     Ok(txid)
 }

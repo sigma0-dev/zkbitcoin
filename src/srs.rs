@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use log::info;
 use tokio::{fs::File, io::AsyncWriteExt};
 use tokio_stream::StreamExt;
 
@@ -33,7 +34,7 @@ pub async fn download_srs() -> PathBuf {
         return srs_path;
     }
 
-    println!("downloading srs...");
+    info!("downloading srs...");
     let mut file = File::create(&srs_path).await.unwrap();
     let mut stream = reqwest::get(SRS_URL).await.unwrap().bytes_stream();
 
@@ -44,7 +45,7 @@ pub async fn download_srs() -> PathBuf {
 
     file.flush().await.unwrap();
 
-    println!(
+    info!(
         "Downloaded SRS for 2^{SRS_SIZE} circuits at {}",
         srs_path.to_string_lossy()
     );

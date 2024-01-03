@@ -5,6 +5,7 @@ use bitcoin::{
     opcodes::all::OP_RETURN, script::Instruction, Address, Amount, Denomination, OutPoint,
     PublicKey, Transaction, TxOut, Txid,
 };
+use log::{debug, info};
 use num_bigint::BigUint;
 use serde::{Deserialize, Serialize};
 
@@ -106,10 +107,7 @@ impl BobRequest {
         // fetch smart contract we want to use
         let smart_contract = fetch_smart_contract(&rpc_ctx, txid).await?;
 
-        // println!(
-        //     "- Bob's trying to use this smart contract: {:#?}",
-        //     smart_contract
-        // );
+        debug!("- smart contract being used: {smart_contract:?}",);
 
         // create a proof with a 0 txid
         // (we expect the proof to give the same `new_state` with the correct `truncated_txid` later)
@@ -149,7 +147,7 @@ impl BobRequest {
 
             let fee_address = taproot_addr_from(ZKBITCOIN_FEE_PUBKEY)?;
             let fee = Amount::from_sat(FEE_ZKBITCOIN_SAT).to_string_in(Denomination::Bitcoin);
-            println!(
+            debug!(
                 "- first output is to zkBitcoinFund: {} for {} BTC",
                 fee_address, fee
             );
@@ -167,7 +165,7 @@ impl BobRequest {
                 let amount_out = smart_contract
                     .locked_value
                     .to_string_in(Denomination::Bitcoin);
-                println!(
+                debug!(
                     "- stateless: second output is to ourselves: {} for {} BTC",
                     bob_address, amount_out
                 );
@@ -198,14 +196,14 @@ impl BobRequest {
                     .locked_value
                     .to_string_in(Denomination::Bitcoin);
 
-                println!("- stateful: Bob is attempting to deposit {amount_in} BTC, and withdraw {amount_out} BTC, from the zkapp's {locked} BTC");
-                println!(
+                debug!("- stateful: Bob is attempting to deposit {amount_in} BTC, and withdraw {amount_out} BTC, from the zkapp's {locked} BTC");
+                debug!(
                     "- there will be {new_value} BTC locked in the zkapp after this transaction"
                 );
 
                 // the updated zkapp
                 let zkbitcoin_address = taproot_addr_from(ZKBITCOIN_PUBKEY)?;
-                println!(
+                debug!(
                     "- stateful: second output is to zkBitcoin: {} for {} BTC",
                     zkbitcoin_address, new_value
                 );
@@ -214,7 +212,7 @@ impl BobRequest {
                 }));
 
                 // Bob can only withdraw amount_out
-                println!("- Bob is receiving amount_out: {}", amount_out);
+                debug!("- Bob is receiving amount_out: {}", amount_out);
                 outputs.push(serde_json::json!({
                     bob_address.to_string(): amount_out,
                 }));
@@ -230,12 +228,14 @@ impl BobRequest {
 
             // call createrawtransaction
             let (tx_hex, tx) = createrawtransaction(rpc_ctx, inputs, outputs, 0).await?;
-            println!("- tx created: {tx:?}");
+            debug!("- tx created: {tx:?}");
 
             // fund that transaction
-            let (_tx_hex, tx) =
+            let (_tx_hex, tx, fee) =
                 fund_raw_transaction(rpc_ctx, TransactionOrHex::Hex(tx_hex)).await?;
-            println!("- tx funded: {tx:?}");
+
+            info!("- funded tx with fee {fee}");
+            debug!("- tx funded: {tx:?}");
 
             tx
         };
@@ -246,7 +246,7 @@ impl BobRequest {
 
         let (proof, public_inputs, vk) =
             snarkjs::prove(&circom_circuit_path, &proof_inputs).await?;
-        println!(
+        debug!(
             "- public_inputs used to create the proof: {:?}",
             public_inputs.0
         );
@@ -315,7 +315,7 @@ impl BobRequest {
             prev_outs,
         };
 
-        //println!("Bob's request: {:#?}", res);
+        debug!("- Bob's request: {res:?}");
 
         Ok(res)
     }
@@ -348,7 +348,7 @@ impl BobRequest {
         // it must contain an output fee paid to zkBitcoinFund
         let pay_to_zkbitcoin_fund_script =
             p2tr_script_to(PublicKey::from_str(ZKBITCOIN_PUBKEY).unwrap());
-        println!(
+        debug!(
             "- pay_to_zkbitcoin_fund_script: {:?}",
             pay_to_zkbitcoin_fund_script
         );
@@ -447,14 +447,14 @@ impl BobRequest {
         } else {
             vec![truncated_txid]
         };
-        println!("- using public inputs: {public_inputs:?}");
+        debug!("- using public inputs: {public_inputs:?}");
 
         // TODO: ensure that there's enough funds remaining to cover for bitcoin and zkBitcoin fee
         // TODO: we need to make sure that new_locked = prev_locked + amount_in - amount_out and that amount_out < prev_locked + amount_in
         //smart_contract.check_remaining_funds(&self)?;
 
         // verify proof using snarkjs
-        println!("- attempting to verify proof");
+        debug!("- attempting to verify proof");
         verify_proof(&self.vk, &public_inputs, &self.proof)?;
 
         //
@@ -683,7 +683,7 @@ pub fn extract_smart_contract_from_tx(
 /// Fetch the smart contract on-chain from the txid.
 pub async fn fetch_smart_contract(ctx: &RpcCtx, txid: bitcoin::Txid) -> Result<SmartContract> {
     // fetch transaction + metadata based on txid
-    println!("- fetching txid {txid}", txid = txid);
+    debug!("- fetching txid {txid}", txid = txid);
     let (_tx_hex, transaction, confirmations) = get_transaction(ctx, txid).await?;
 
     // enforce that the smart contract was confirmed

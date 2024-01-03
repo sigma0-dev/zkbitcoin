@@ -17,6 +17,7 @@ use itertools::Itertools;
 use jsonrpsee::{server::Server, RpcModule};
 use jsonrpsee_core::RpcResult;
 use jsonrpsee_types::{ErrorObjectOwned, Params};
+use log::{debug, error, info};
 use secp256k1::XOnlyPublicKey;
 use serde::{Deserialize, Serialize};
 
@@ -108,7 +109,7 @@ impl Orchestrator {
             )
             .await
             .context("rpc request to committee didn't work");
-            println!("{:?}", resp);
+            debug!("{:?}", resp);
             let resp = resp?;
 
             let response: bitcoincore_rpc::jsonrpc::Response = serde_json::from_str(&resp)?;
@@ -153,7 +154,7 @@ impl Orchestrator {
                 &[serde_json::value::to_raw_value(&round2_request)?],
             )
             .await;
-            println!("resp to 2nd request: {:?}", resp);
+            debug!("resp to 2nd request: {:?}", resp);
 
             let resp = resp.context("second rpc request to committee didn't work")?;
 
@@ -168,7 +169,7 @@ impl Orchestrator {
         // Aggregate signatures
         //
 
-        println!("- aggregate signature shares");
+        debug!("- aggregate signature shares");
         let signing_package = frost_secp256k1_tr::SigningPackage::new(commitments_map, &message);
         let group_signature = {
             let res = frost_secp256k1_tr::aggregate(
@@ -177,7 +178,7 @@ impl Orchestrator {
                 &self.pubkey_package,
             );
             if let Some(err) = res.err() {
-                println!("error: {}", err);
+                error!("error: {}", err);
             }
             res.context("failed to aggregate signatures")?
         };
@@ -187,7 +188,7 @@ impl Orchestrator {
             // verify using FROST
             let group_pubkey = self.pubkey_package.verifying_key();
             assert!(group_pubkey.verify(&message, &group_signature).is_ok());
-            println!("- the signature verified locally with FROST lib");
+            debug!("- the signature verified locally with FROST lib");
 
             // assert that the pubkey is the same
             let deserialized_pubkey =
@@ -205,13 +206,13 @@ impl Orchestrator {
                 let internal_key = UntweakedPublicKey::from(zkbitcoin_pubkey);
                 let (tweaked, _) = internal_key.tap_tweak(&secp, None);
                 let tweaked = tweaked.to_string();
-                println!("tweaked: {}", tweaked);
+                debug!("tweaked: {}", tweaked);
 
                 // from FROST
                 let xone = XOnlyPublicKey::from_slice(&group_pubkey.serialize()[1..]).unwrap();
                 let (tweaked2, _) = xone.tap_tweak(&secp, None);
                 let tweaked2 = tweaked2.to_string();
-                println!("tweaked2: {}", tweaked2);
+                debug!("tweaked2: {}", tweaked2);
                 assert_eq!(tweaked, tweaked2);
 
                 // twaked
@@ -221,7 +222,7 @@ impl Orchestrator {
                     &tweaked3,
                 );
                 let tweaked3 = s.to_lower_hex_string();
-                println!("tweaked3: {}", tweaked3);
+                debug!("tweaked3: {}", tweaked3);
                 //assert_eq!(tweaked2, tweaked3);
             }
 
@@ -235,16 +236,16 @@ impl Orchestrator {
             let (tweaked, _) = internal_key.tap_tweak(&secp, None);
             let msg = secp256k1::Message::from_digest(message);
             assert!(secp.verify_schnorr(&sig, &msg, &tweaked.into()).is_ok());
-            println!("- the signature verified locally with bitcoin lib");
+            debug!("- the signature verified locally with bitcoin lib");
         }
 
         //
         // Include signature in the witness of the transaction
         //
 
-        println!("- include signature in witness of transaction");
+        debug!("- include signature in witness of transaction");
         let serialized = group_signature.serialize();
-        println!("- serialized: {:?}", serialized);
+        debug!("- serialized: {:?}", serialized);
         let sig = secp256k1::schnorr::Signature::from_slice(&serialized[1..])
             .context("couldn't convert signature type")?;
 
@@ -260,23 +261,10 @@ impl Orchestrator {
             .context("couldn't find zkapp input in transaction")?
             .witness = witness;
 
-        //
+        // return the signed transaction
         Ok(BobResponse {
             unlocked_tx: transaction,
         })
-
-        //
-        // Broadcast transaction
-        //
-
-        // println!("- attempting to broadcast transaction");
-        // let txid = send_raw_transaction(
-        //     &self.bitcoin_rpc_ctx,
-        //     TransactionOrHex::Transaction(&transaction),
-        // )
-        // .await?;
-
-        // Ok(txid)
     }
 }
 
@@ -292,7 +280,7 @@ async fn unlock_funds(
     // get bob request
     let bob_request: [BobRequest; 1] = params.parse()?;
     let bob_request = &bob_request[0];
-    println!("received request: {:?}", bob_request);
+    info!("received request: {:?}", bob_request);
 
     let bob_response = context.handle_request(bob_request).await.map_err(|e| {
         ErrorObjectOwned::owned(
@@ -312,7 +300,7 @@ pub async fn run_server(
     committee_cfg: CommitteeConfig,
 ) -> Result<SocketAddr> {
     let address = address.unwrap_or("127.0.0.1:6666");
-    println!("- starting orchestrator at address http://{address}");
+    info!("- starting orchestrator at address http://{address}");
 
     let ctx = Orchestrator {
         bitcoin_rpc_ctx: ctx,

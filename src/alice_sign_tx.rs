@@ -2,6 +2,7 @@ use std::str::FromStr;
 
 use anyhow::Result;
 use bitcoin::{absolute::LockTime, transaction::Version, Amount, PublicKey, Transaction, TxOut};
+use log::{debug, info};
 
 use crate::constants::ZKBITCOIN_PUBKEY;
 use crate::json_rpc_stuff::{
@@ -52,8 +53,7 @@ pub async fn generate_and_broadcast_transaction(
         };
         let tx_hex = bitcoin::consensus::encode::serialize_hex(&tx);
 
-        //println!("- Alice's raw tx for 0xzkBitcoin: {tx:?}");
-        println!("- Alice's raw tx for 0xzkBitcoin (in hex): {tx_hex}");
+        debug!("- Alice's raw tx for 0xzkBitcoin (in hex): {tx_hex}");
 
         (tx, tx_hex)
     };
@@ -61,8 +61,9 @@ pub async fn generate_and_broadcast_transaction(
     // 2. ask wallet to add inputs to fund the transaction
     // https://developer.bitcoin.org/reference/rpc/fundrawtransaction.html
     //
-    let (raw_tx_with_inputs_hex, _raw_tx_with_inputs) =
+    let (raw_tx_with_inputs_hex, _raw_tx_with_inputs, fee) =
         fund_raw_transaction(ctx, TransactionOrHex::Hex(tx_hex)).await?;
+    info!("- funded transaction with fee: {fee}");
 
     // 3. sign transaction
     // https://developer.bitcoin.org/reference/rpc/signrawtransactionwithwallet.html

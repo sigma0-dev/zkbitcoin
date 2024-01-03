@@ -12,6 +12,7 @@ use jsonrpsee::{
 };
 use jsonrpsee_core::RpcResult;
 use jsonrpsee_types::ErrorObjectOwned;
+use log::info;
 use rand::thread_rng;
 use serde::{Deserialize, Serialize};
 
@@ -73,7 +74,7 @@ async fn round_1_signing(
     // get bob request
     let bob_request: [BobRequest; 1] = params.parse()?;
     let bob_request = &bob_request[0];
-    println!("received request: {:?}", bob_request);
+    info!("received request: {:?}", bob_request);
 
     // check if we already have a local signing task under that txid
     let txid = bob_request.txid().map_err(|e| {
@@ -173,7 +174,7 @@ async fn round_2_signing(
     // get commitments from params
     let round2request: [Round2Request; 1] = params.parse()?;
     let round2request = &round2request[0];
-    println!("received request: {:?}", round2request);
+    info!("received request: {:?}", round2request);
 
     // retrieve metadata for this task (and prune it)
     let LocalSigningTask {
@@ -251,7 +252,7 @@ pub async fn run_server(
     pubkey_package: frost::PublicKeyPackage,
 ) -> anyhow::Result<SocketAddr> {
     let address = address.unwrap_or("127.0.0.1:6666");
-    println!(
+    info!(
         "- starting node for identifier {id:?} at address http://{address}",
         id = key_package.identifier()
     );

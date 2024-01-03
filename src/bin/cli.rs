@@ -3,6 +3,7 @@ use std::{collections::HashMap, env, path::PathBuf, str::FromStr};
 use anyhow::{ensure, Context, Result};
 use bitcoin::{Address, Txid};
 use clap::{Parser, Subcommand};
+use log::info;
 use tempdir::TempDir;
 use zkbitcoin::{
     alice_sign_tx::generate_and_broadcast_transaction,
@@ -40,15 +41,11 @@ enum Commands {
         #[arg(env = "RPC_AUTH")]
         auth: Option<String>,
 
-        // /// The path to the verifier key in JSON format (see `examples/circuit/vk.json` for an example).
-        // #[arg(short, long)]
-        // verifier_key_path: Option<String>,
-        // -----
-        /// The path to the circom circuit to deploy.
+        /// The path to the Circom circuit to deploy.
         #[arg(short, long)]
         circom_circuit_path: PathBuf,
 
-        /// Optionally, for stateful zkapps, an initial state.
+        /// Optionally, an initial state for stateful zkapps.
         #[arg(short, long)]
         initial_state: Option<String>,
 
@@ -83,27 +80,14 @@ enum Commands {
         #[arg(short, long)]
         recipient_address: String,
 
-        // /// The path to the verifier key in JSON format (see `examples/circuit/vk.json` for an example).
-        // #[arg(short, long)]
-        // verifier_key_path: String,
-        /// The path to the circom circuit to deploy.
+        /// The path to the circom circuit to use.
         #[arg(short, long)]
         circom_circuit_path: PathBuf,
 
-        /// A JSON string of the proof inputs in case of a stateful zkapp being used.
-        /// We expect the following fields:
-        /// `prev_state`, `amount_in`, `amount_out`.
+        /// A JSON string of the proof inputs.
+        /// For stateful zkapps, we expect at least `amount_in` and `amount_out`.
         #[arg(short, long)]
         proof_inputs: Option<String>,
-        // /// The path to the full proof public inputs
-        // /// (see `examples/circuit/proof_inputs.json` for an example).
-        // #[arg(short, long)]
-        // inputs_path: Option<String>,
-
-        // /// The path to the full proof.
-        // /// (see `examples/circuit/proof.json` for an example).
-        // #[arg(short, long)]
-        // proof_path: String,
     },
 
     /// Generates an MPC committee via a trusted dealer.
@@ -175,11 +159,11 @@ async fn main() -> Result<()> {
     env_logger::init();
 
     // debug info
-    println!(
+    info!(
         "- zkbitcoin_address: {}",
         taproot_addr_from(ZKBITCOIN_PUBKEY).unwrap().to_string()
     );
-    println!(
+    info!(
         "- zkbitcoin_fund_address: {}",
         taproot_addr_from(ZKBITCOIN_FEE_PUBKEY).unwrap().to_string()
     );
@@ -213,49 +197,9 @@ async fn main() -> Result<()> {
                     circuit_r1cs_path: _,
                     prover_key_path: _,
                 } = snarkjs::compile(&tmp_dir, &circom_circuit_path).await?;
-
-                // verifier_key
-
-                // // open vk file
-                // let full_path = PathBuf::from(verifier_key_path);
-                // let file = std::fs::File::open(full_path).expect("file not found");
-                // let vk: plonk::VerifierKey =
-                //     serde_json::from_reader(file).expect("error while reading file");
-
-                // hash
                 let vk_hash = verifier_key.hash();
-
                 (verifier_key, vk_hash)
             };
-
-            // let mut public_inputs = vec![];
-            // if let Some(path) = public_inputs_path {
-            //     // open public_inputs file
-            //     let full_path = PathBuf::from(path);
-            //     let file = std::fs::File::open(&full_path)
-            //         .unwrap_or_else(|_| panic!("file not found at path: {:?}", full_path));
-
-            //     // recursively extract all strings from object
-            //     fn recover_all_strings(acc: &mut Vec<String>, value: serde_json::Value) {
-            //         match value {
-            //             serde_json::Value::String(s) => acc.push(s),
-            //             serde_json::Value::Array(arr) => {
-            //                 for v in arr {
-            //                     recover_all_strings(acc, v);
-            //                 }
-            //             }
-            //             serde_json::Value::Object(obj) => {
-            //                 for (_, v) in obj {
-            //                     recover_all_strings(acc, v);
-            //                 }
-            //             }
-            //             _ => (),
-            //         }
-            //     }
-            //     let root: serde_json::Value =
-            //         serde_json::from_reader(file).expect("error while reading file");
-            //     recover_all_strings(&mut public_inputs, root);
-            // }
 
             // sanity check
             let num_public_inputs = vk.nPublic;
@@ -298,7 +242,8 @@ async fn main() -> Result<()> {
             )
             .await?;
 
-            println!("txid: {}", txid);
+            info!("- txid broadcast to the network: {txid}");
+            info!("- on an explorer: https://blockstream.info/testnet/tx/{txid}");
         }
 
         // Bob's command
@@ -348,16 +293,13 @@ async fn main() -> Result<()> {
             )
             .await?;
 
-            // send bob's request to the MPC committee.
-            // TODO: we need a coordinator.
+            // send bob's request to the orchestartor.
             let address = orchestrator_address
                 .as_deref()
                 .unwrap_or(ORCHESTRATOR_ADDRESS);
             let bob_response = send_bob_request(address, bob_request)
                 .await
                 .context("error while sending request to orchestrator")?;
-
-            println!("{:?}", bob_response);
 
             // sign it
             let (signed_tx_hex, _signed_tx) = sign_transaction(
@@ -370,8 +312,8 @@ async fn main() -> Result<()> {
             let txid = send_raw_transaction(&rpc_ctx, TransactionOrHex::Hex(signed_tx_hex)).await?;
 
             // print useful msg
-            println!("- txid broadcast to the network: {txid}");
-            println!("- on an explorer: https://blockstream.info/testnet/tx/{txid}");
+            info!("- txid broadcast to the network: {txid}");
+            info!("- on an explorer: https://blockstream.info/testnet/tx/{txid}");
         }
 
         Commands::GenerateCommittee {
