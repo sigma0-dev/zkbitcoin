@@ -176,11 +176,11 @@ async fn main() -> Result<()> {
 
     // debug info
     println!(
-        "zkbitcoin_address: {}",
+        "- zkbitcoin_address: {}",
         taproot_addr_from(ZKBITCOIN_PUBKEY).unwrap().to_string()
     );
     println!(
-        "zkbitcoin_fund_address: {}",
+        "- zkbitcoin_fund_address: {}",
         taproot_addr_from(ZKBITCOIN_FEE_PUBKEY).unwrap().to_string()
     );
 

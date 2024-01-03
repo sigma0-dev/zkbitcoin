@@ -104,7 +104,7 @@ pub async fn json_rpc_request<'a>(
     ctx: &RpcCtx,
     method: &'static str,
     params: &'a [Box<serde_json::value::RawValue>],
-) -> Result<String, reqwest::Error> {
+) -> Result<String> {
     // create the request
     let request = bitcoincore_rpc::jsonrpc::Request::<'a> {
         // bitcoind doesn't seem to support anything else but json rpc 1.0
@@ -120,11 +120,11 @@ pub async fn json_rpc_request<'a>(
         let user_n_pw = general_purpose::STANDARD.encode(auth);
         headers.insert(
             AUTHORIZATION,
-            HeaderValue::from_str(&format!("Basic {}", user_n_pw)).unwrap(),
+            HeaderValue::from_str(&format!("Basic {}", user_n_pw))?,
         );
     }
 
-    let body = serde_json::to_string(&request).unwrap();
+    let body = serde_json::to_string(&request)?;
 
     let client = Client::builder()
         .default_headers(headers)
@@ -138,7 +138,7 @@ pub async fn json_rpc_request<'a>(
     };
 
     {
-        let body = serde_json::to_string_pretty(&request).unwrap();
+        let body = serde_json::to_string_pretty(&request)?;
         println!("- sending request to {url} with body: {body}");
     }
 
@@ -148,8 +148,9 @@ pub async fn json_rpc_request<'a>(
         .body(body)
         .send()
         .await?;
-    println!("- status_code: {:?}", &response.status().as_u16());
-    response.text().await
+
+    let res = response.text().await?;
+    Ok(res)
 }
 
 //
@@ -173,15 +174,17 @@ pub async fn fund_raw_transaction<'a>(
     let response = json_rpc_request(
         ctx,
         "fundrawtransaction",
-        &[serde_json::value::to_raw_value(&serde_json::Value::String(tx_hex)).unwrap()],
+        &[serde_json::value::to_raw_value(
+            &serde_json::Value::String(tx_hex),
+        )?],
     )
     .await
     .context("fundrawtransaction error")?;
 
     // TODO: get rid of unwrap in here
-    let response: bitcoincore_rpc::jsonrpc::Response = serde_json::from_str(&response).unwrap();
-    let parsed: bitcoincore_rpc::json::FundRawTransactionResult = response.result().unwrap();
-    let tx: Transaction = bitcoin::consensus::encode::deserialize(&parsed.hex).unwrap();
+    let response: bitcoincore_rpc::jsonrpc::Response = serde_json::from_str(&response)?;
+    let parsed: bitcoincore_rpc::json::FundRawTransactionResult = response.result()?;
+    let tx: Transaction = bitcoin::consensus::encode::deserialize(&parsed.hex)?;
     let actual_hex = hex::encode(&parsed.hex);
     //println!("- funded tx: {tx:?}");
     println!("- funded tx (in hex): {actual_hex}");
@@ -201,15 +204,17 @@ pub async fn sign_transaction<'a>(
     let response = json_rpc_request(
         ctx,
         "signrawtransactionwithwallet",
-        &[serde_json::value::to_raw_value(&serde_json::Value::String(tx_hex)).unwrap()],
+        &[serde_json::value::to_raw_value(
+            &serde_json::Value::String(tx_hex),
+        )?],
     )
     .await
     .context("signrawtransactionwithwallet error")?;
 
     // TODO: get rid of unwrap in here
-    let response: bitcoincore_rpc::jsonrpc::Response = serde_json::from_str(&response).unwrap();
-    let parsed: bitcoincore_rpc::json::SignRawTransactionResult = response.result().unwrap();
-    let tx: Transaction = bitcoin::consensus::encode::deserialize(&parsed.hex).unwrap();
+    let response: bitcoincore_rpc::jsonrpc::Response = serde_json::from_str(&response)?;
+    let parsed: bitcoincore_rpc::json::SignRawTransactionResult = response.result()?;
+    let tx: Transaction = bitcoin::consensus::encode::deserialize(&parsed.hex)?;
     let actual_hex = hex::encode(&parsed.hex);
     //println!("- signed tx: {tx:?}");
     println!("- signed tx (in hex): {actual_hex}");
@@ -226,16 +231,46 @@ pub async fn send_raw_transaction<'a>(ctx: &RpcCtx, tx: TransactionOrHex<'a>) ->
     let response = json_rpc_request(
         ctx,
         "sendrawtransaction",
-        &[serde_json::value::to_raw_value(&serde_json::Value::String(tx_hex)).unwrap()],
+        &[serde_json::value::to_raw_value(
+            &serde_json::Value::String(tx_hex),
+        )?],
     )
     .await
     .context("sendrawtransaction error")?;
 
-    // TODO: get rid of unwrap in here
-    let response: bitcoincore_rpc::jsonrpc::Response = serde_json::from_str(&response).unwrap();
-    let txid: bitcoin::Txid = response.result().unwrap();
+    let response: bitcoincore_rpc::jsonrpc::Response = serde_json::from_str(&response)?;
+    let txid: bitcoin::Txid = response.result()?;
     println!("- txid broadcast to the network: {txid}");
     println!("- on an explorer: https://blockstream.info/testnet/tx/{txid}");
 
     Ok(txid)
+}
+
+pub async fn createrawtransaction<'a>(
+    ctx: &RpcCtx,
+    inputs: Vec<serde_json::Value>,
+    outputs: Vec<serde_json::Value>,
+    lock_time: usize,
+) -> Result<(String, Transaction)> {
+    let response = json_rpc_request(
+        ctx,
+        "createrawtransaction",
+        &[
+            // inputs
+            serde_json::value::to_raw_value(&serde_json::Value::Array(inputs))?,
+            // outputs
+            serde_json::value::to_raw_value(&serde_json::Value::Array(outputs))?,
+            // lock time
+            serde_json::value::to_raw_value(&serde_json::Number::from(lock_time))?,
+        ],
+    )
+    .await
+    .context("createrawtransaction error")?;
+
+    let response: bitcoincore_rpc::jsonrpc::Response = serde_json::from_str(&response)?;
+    let tx_hex: String = response.result()?;
+    let bytes = hex::decode(&tx_hex)?;
+    let tx: Transaction = bitcoin::consensus::encode::deserialize(&bytes)?;
+
+    Ok((tx_hex, tx))
 }
