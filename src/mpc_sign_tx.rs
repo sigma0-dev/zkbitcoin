@@ -292,13 +292,10 @@ mod tests {
         println!("- txid: {txid}");
 
         // Spend this fucker now
-        let vout = 0;
         let satoshi_amount = Amount::from_sat(amount);
 
         let bob_address = taproot_addr_from(ZKBITCOIN_PUBKEY).unwrap();
 
-        let fee_bitcoin_sat = 400;
-        let fee_zkbitcoin_sat = 100;
         let smart_contract = SmartContract {
             txid,
             locked_value: satoshi_amount,
@@ -337,7 +334,6 @@ mod tests {
         let txid =
             Txid::from_str("02fcc5b458ff032d4c82b12ce8c1c4c5b88c91bd7953bb2cdbb212f3219e91c3")
                 .unwrap();
-        let vout = 0;
         let satoshi_amount = Amount::from_sat(1000);
 
         let bob_address = taproot_addr_from(ZKBITCOIN_PUBKEY).unwrap();

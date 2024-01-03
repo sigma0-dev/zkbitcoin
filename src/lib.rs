@@ -100,13 +100,11 @@ pub fn op_return_script_for(
 ) -> anyhow::Result<bitcoin::ScriptBuf> {
     let mut data = vk_hash.to_vec();
     if let Some(initial_state) = initial_state {
-        data.extend(
-            circom_field_to_bytes(&initial_state).context("incorrect initial state given")?,
-        );
+        data.extend(circom_field_to_bytes(initial_state).context("incorrect initial state given")?);
         assert!(data.len() < 64);
     }
     let thing: &bitcoin::script::PushBytes = data.as_slice().try_into().unwrap();
-    Ok(bitcoin::ScriptBuf::new_op_return(&thing))
+    Ok(bitcoin::ScriptBuf::new_op_return(thing))
 }
 
 pub fn taproot_addr_from(pubkey_str: &str) -> anyhow::Result<bitcoin::Address> {

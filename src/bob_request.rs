@@ -51,7 +51,7 @@ fn string_to_amount(amount: &str) -> Result<Amount> {
 // Bob's side: form a request and send it to an endpoint
 //
 
-/// An update to a zkapp.
+/// An update to a _stateful_ zkapp.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Update {
     /// The new state after update.
@@ -71,7 +71,7 @@ pub struct Update {
     pub amount_in: String,
 }
 
-/// A request from Bob to unlock funds from a smart contract should look like this.
+/// A request from Bob to unlock funds from a smart contract.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BobRequest {
     /// The transaction authenticated by the proof, and that Bob wants to sign.
@@ -105,8 +105,7 @@ impl BobRequest {
         mut proof_inputs: HashMap<String, Vec<String>>,
     ) -> Result<Self> {
         // fetch smart contract we want to use
-        let smart_contract = fetch_smart_contract(&rpc_ctx, txid).await?;
-
+        let smart_contract = fetch_smart_contract(rpc_ctx, txid).await?;
         debug!("- smart contract being used: {smart_contract:?}",);
 
         // create a proof with a 0 txid
@@ -114,7 +113,6 @@ impl BobRequest {
         // we need to do this because we need to include the `new_state` in a stateful zkapp transaction
         // and then we can compute the transaction ID
         // and then we can compute the proof on the correct public inputs (which include the transaction ID).
-
         let new_state = if let Some(prev_state) = &smart_contract.state {
             // truncated_txid = 0
             proof_inputs.insert("truncated_txid".to_string(), vec!["0".to_string()]);
@@ -122,7 +120,7 @@ impl BobRequest {
 
             // prove
             let (_proof, public_inputs, _vk) =
-                snarkjs::prove(&circom_circuit_path, &proof_inputs).await?;
+                snarkjs::prove(circom_circuit_path, &proof_inputs).await?;
 
             // extract new_state
             let new_state = public_inputs
@@ -136,6 +134,7 @@ impl BobRequest {
             None
         };
 
+        // create funded transaction
         let tx = {
             let inputs = vec![
                 // the zkapp being used
@@ -244,8 +243,7 @@ impl BobRequest {
         let truncated_txid = truncate_txid(tx.txid());
         proof_inputs.insert("truncated_txid".to_string(), vec![truncated_txid]);
 
-        let (proof, public_inputs, vk) =
-            snarkjs::prove(&circom_circuit_path, &proof_inputs).await?;
+        let (proof, public_inputs, vk) = snarkjs::prove(circom_circuit_path, &proof_inputs).await?;
         debug!(
             "- public_inputs used to create the proof: {:?}",
             public_inputs.0

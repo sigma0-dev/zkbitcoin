@@ -1,6 +1,6 @@
 #![allow(non_snake_case)]
 
-use anyhow::{ensure, Result};
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use sha3::{Digest, Keccak256};
 

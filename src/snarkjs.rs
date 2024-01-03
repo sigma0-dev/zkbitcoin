@@ -40,7 +40,7 @@ pub async fn compile(tmp_dir: &TempDir, circom_circuit_path: &Path) -> Result<Co
     {
         // circom circuit.circom --r1cs --wasm --sym
         let output = Command::new("circom")
-            .current_dir(&tmp_dir)
+            .current_dir(tmp_dir)
             .arg(circom_circuit_path)
             .arg("--wasm")
             .arg("--r1cs")
@@ -59,7 +59,7 @@ pub async fn compile(tmp_dir: &TempDir, circom_circuit_path: &Path) -> Result<Co
     {
         // snarkjs plonk setup circuit.r1cs phase2_start.ptau circuit_final.zkey
         let output = Command::new("snarkjs")
-            .current_dir(&tmp_dir)
+            .current_dir(tmp_dir)
             .arg("plonk")
             .arg("setup")
             .arg(&circuit_r1cs_path)
@@ -79,7 +79,7 @@ pub async fn compile(tmp_dir: &TempDir, circom_circuit_path: &Path) -> Result<Co
     {
         // snarkjs zkey export verificationkey circuit_final.zkey verification_key.json
         let output = Command::new("snarkjs")
-            .current_dir(&tmp_dir)
+            .current_dir(tmp_dir)
             .arg("zkey")
             .arg("export")
             .arg("verificationkey")

@@ -9,7 +9,7 @@ use anyhow::{Context, Result};
 use bitcoin::{
     hex::DisplayHex,
     key::{TapTweak, UntweakedPublicKey},
-    secp256k1, taproot, TapSighashType, Txid, Witness,
+    secp256k1, taproot, TapSighashType, Witness,
 };
 use frost_secp256k1_tr::Ciphersuite;
 use frost_secp256k1_tr::Group;
@@ -26,7 +26,7 @@ use crate::{
     committee::node::Round1Response,
     constants::ZKBITCOIN_PUBKEY,
     frost,
-    json_rpc_stuff::{json_rpc_request, send_raw_transaction, RpcCtx, TransactionOrHex},
+    json_rpc_stuff::{json_rpc_request, RpcCtx},
     mpc_sign_tx::get_digest_to_hash,
 };
 
@@ -116,7 +116,7 @@ impl Orchestrator {
             let resp: Round1Response = response.result()?;
 
             // store the commitment
-            commitments_map.insert(**member_id, resp.commitments.clone());
+            commitments_map.insert(**member_id, resp.commitments);
         }
 
         //
@@ -134,7 +134,7 @@ impl Orchestrator {
             txid: bob_request.txid()?,
             proof_hash: bob_request.proof.hash(),
             commitments_map: commitments_map.clone(),
-            message: message.clone(),
+            message,
         };
 
         // TODO: do this concurrently with async
@@ -162,7 +162,7 @@ impl Orchestrator {
             let round2_response: Round2Response = response.result()?;
 
             // store the commitment
-            signature_shares.insert(**member_id, round2_response.signature_share.clone());
+            signature_shares.insert(**member_id, round2_response.signature_share);
         }
 
         //

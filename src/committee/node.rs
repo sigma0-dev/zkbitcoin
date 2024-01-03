@@ -190,7 +190,7 @@ async fn round_2_signing(
                 return RpcResult::Err(ErrorObjectOwned::owned(
                     jsonrpsee_types::error::UNKNOWN_ERROR_CODE,
                     "proof hash doesn't match",
-                    Some(format!("proof hash doesn't match")),
+                    Some("proof hash doesn't match".to_string()),
                 ));
             }
 
@@ -199,7 +199,7 @@ async fn round_2_signing(
             return RpcResult::Err(ErrorObjectOwned::owned(
                 jsonrpsee_types::error::UNKNOWN_ERROR_CODE,
                 "no signing task found for this txid",
-                Some(format!("no signing task found for this txid")),
+                Some("no signing task found for this txid".to_string()),
             ));
         }
     };
@@ -218,7 +218,7 @@ async fn round_2_signing(
         return RpcResult::Err(ErrorObjectOwned::owned(
             jsonrpsee_types::error::UNKNOWN_ERROR_CODE,
             "message doesn't match",
-            Some(format!("message doesn't match")),
+            Some("message doesn't match".to_string()),
         ));
     }
 
