@@ -12,16 +12,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     circom_field_from_bytes, circom_field_to_bytes,
-    constants::{
-        FEE_ZKBITCOIN_SAT, MINIMUM_CONFIRMATIONS, ZKBITCOIN_ADDRESS, ZKBITCOIN_FEE_ADDRESS,
-        ZKBITCOIN_FEE_PUBKEY, ZKBITCOIN_PUBKEY,
-    },
+    constants::{FEE_ZKBITCOIN_SAT, MINIMUM_CONFIRMATIONS, ZKBITCOIN_FEE_PUBKEY, ZKBITCOIN_PUBKEY},
     get_network,
     json_rpc_stuff::{fund_raw_transaction, json_rpc_request, TransactionOrHex},
     op_return_script_for, p2tr_script_to,
     plonk::PublicInputs,
     snarkjs::{self, verify_proof},
-    truncate_txid,
+    taproot_addr_from, truncate_txid,
 };
 use crate::{json_rpc_stuff::RpcCtx, plonk};
 
@@ -266,16 +263,13 @@ impl BobRequest {
                 }),
             ];
 
-            let taproot_fee_pubkey = bitcoin::PublicKey::from_str(ZKBITCOIN_FEE_PUBKEY).unwrap();
-            let internal_key = bitcoin::key::UntweakedPublicKey::from(taproot_fee_pubkey);
-            let secp = secp256k1::Secp256k1::default();
-            let taproot_fee_address = Address::p2tr(&secp, internal_key, None, get_network());
+            let fee_address = taproot_addr_from(ZKBITCOIN_FEE_PUBKEY)?;
 
             let mut outputs = vec![
                 // first output is to zkBitcoinFund
                 // TODO: we need to create a taproot address here
                 serde_json::json!({
-                    taproot_fee_address.to_string(): Amount::from_sat(FEE_ZKBITCOIN_SAT).to_string_in(Denomination::Bitcoin),
+                    fee_address.to_string(): Amount::from_sat(FEE_ZKBITCOIN_SAT).to_string_in(Denomination::Bitcoin),
                 }),
             ];
 
@@ -307,8 +301,10 @@ impl BobRequest {
                 }));
 
                 // the updated zkapp
+                let zkbitcoin_address = taproot_addr_from(ZKBITCOIN_FEE_PUBKEY)?;
                 outputs.push(serde_json::json!({
-                    ZKBITCOIN_ADDRESS.to_string(): new_value.to_string_in(Denomination::Bitcoin)
+                    // TODO: this is incorrect as it's not a taproot address
+                    zkbitcoin_address.to_string(): new_value.to_string_in(Denomination::Bitcoin)
                 }));
 
                 // its vk + new state

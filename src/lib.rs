@@ -108,3 +108,11 @@ pub fn op_return_script_for(
     let thing: &bitcoin::script::PushBytes = data.as_slice().try_into().unwrap();
     Ok(bitcoin::ScriptBuf::new_op_return(&thing))
 }
+
+pub fn taproot_addr_from(pubkey_str: &str) -> anyhow::Result<bitcoin::Address> {
+    let pubkey = <bitcoin::PublicKey as std::str::FromStr>::from_str(pubkey_str)?;
+    let internal_key = bitcoin::key::UntweakedPublicKey::from(pubkey);
+    let secp = secp256k1::Secp256k1::default();
+    let taproot_address = bitcoin::Address::p2tr(&secp, internal_key, None, get_network());
+    Ok(taproot_address)
+}

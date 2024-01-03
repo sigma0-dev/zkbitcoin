@@ -1,163 +1,74 @@
 # zkBitcoin
 
-## Set up Bitcoin CLI
+Use ZK applications on Bitcoin!
 
-```shell
-brew install bitcoin
+How does it work? Write your ZK application in Circom, compile it to a circuit, and deploy it on Bitcoin by sending a transaction to our multi-party wallet run by a committee of nodes.
+
+To use a zkapp, anyone who can provide a proof of correct execution to our committee will trigger a threshold signature to move funds out of the zkapp.
+
+## Usage
+
+### Stateless zkapps
+
+A stateless zkapp is a zkapp that can be unlocked (its funds can be unlocked) by anyone who can provide a proof of correct execution. An example of a stateless zkapp is in [`examples/circuit/stateless.circom`](examples/circuit/stateless.circom). A stateless zkapp always contains one public input that authenticates the transaction that spends it:
+
+```circom
+template Main() {
+    signal input truncated_txid;
 ```
 
-## Set up bitcoind
-
-Both users and nodes need access to Bitcoin.
-
-1. download latest release on https://bitcoincore.org/en/releases/ (for example `wget https://bitcoincore.org/bin/bitcoin-core-25.1/bitcoin-25.1-x86_64-linux-gnu.tar.gz`)
-2. you can run bitcoind with `./bin/bitcoind -testnet -server=1 -rpcuser=root -rpcpassword=hello`
-    - or you can set these in `bitcoin.conf` and copy that file in `~/.bitcoin/bitcoin.conf`
-3. you can query it for testing with `./bin/bitcoin-cli -rpcport=18332 -rpcuser=root -rpcpassword=hellohello getblock`
-
-you can also use curl to query it:
-
-```console
-curl --user root --data-binary '{"jsonrpc": "1.0", "id": "curltest", "method": "getblock", "params": ["00000000c937983704a73af28acdec37b049d214adbda81d7e2a3dd146f6ed09"]}' -H 'content-type: text/plain;' http://127.0.0.1:18332/
-```
-
-If you want to expose this to the internet, you can setup a reverse proxy like nginx. This is the config I use (in `/etc/nginx/sites-enabled/bitcoind-proxy.conf`):
-
-```
-server {
-    listen 18331;
-    server_name _;
-
-    location / {
-        proxy_pass http://127.0.0.1:18332;
-    }
-}
-```
-
-## Our own bitcoind
-
-I'm running one on digitalocean at [146.190.33.39](http://146.190.33.39)
-
-You can query it with:
-
-```console
-curl --user root:hellohello --data-binary '{"jsonrpc": "1.0", "id": "curltest", "method": "getblockchaininfo", "params": []}' -H 'content-type: text/plain;' http://146.190.33.39:18331
-```
-
-### Our wallets
-
-I created a wallet called `mywallet` via:
-
-```shell
-bitcoin-cli -testnet -rpcconnect=146.190.33.39 -rpcport=18331 -rpcuser=root -rpcpassword=hellohello createwallet mywallet
-```
-
-Created another wallet `wallet2`:
-
-```shell
-bitcoin-cli -testnet -rpcconnect=146.190.33.39 -rpcport=18331 -rpcuser=root -rpcpassword=hellohello createwallet wallet2
-```
-
-You can get information about a wallet using:
-
-```shell
-bitcoin-cli -testnet -rpcconnect=146.190.33.39 -rpcport=18331 -rpcuser=root -rpcpassword=hellohello -rpcwallet=mywallet getwalletinfo
-```
-
-Obtain a new address via:
-
-```shell
-bitcoin-cli -testnet -rpcconnect=146.190.33.39 -rpcport=18331 -rpcuser=root -rpcpassword=hellohello -rpcwallet=mywallet getnewaddress
-```
-
-(I believe we can switch wallets by using the `loadwallet` command.)
-
-The addresses I've been using:
-
-* `tb1q5pxn428emp73saglk7ula0yx5j7ehegu6ud6ad`: the zkBitcoin address, where zkapps have to be sent to
-* `tb1q6nkpv2j9lxrm6h3w4skrny3thswgdcca8cx9k6`: the zkBitcoin fund, where fees are being paid to when using zkapps (deploying is free)
-* `tb1q6vjawwska63qxf77rrm5uwqev0ma8as8d0mkrt`: Bob address.
-
-It's a good idea to fund them from times to times using [a faucet](https://bitcoinfaucet.uo1.net/send.php).
-
-Note that you can get their associated public keys via:
-
-```shell
-bitcoin-cli -testnet -rpcconnect=146.190.33.39 -rpcport=18331 -rpcuser=root -rpcpassword=hellohello -rpcwallet=mywallet getaddressinfo "tb1q5pxn428emp73saglk7ula0yx5j7ehegu6ud6ad"
-```
-
-## Use circom/snarkjs
-
-The following script creates a `vk.json` which you can also see in [`fixtures/vk.json`](fixtures/vk.json)
-
-```shell
-# phase1
-snarkjs powersoftau new bn128 14 phase1_start.ptau -v
-snarkjs powersoftau contribute phase1_start.ptau phase1_end.ptau --name="First contribution" -v
-
-# start of phase 2 (but don't do the phase 2)
-snarkjs powersoftau prepare phase2 phase1_end.ptau phase2_start.ptau -v
-
-# compile
-circom circuit.circom --r1cs --wasm --sym
-
-# create zkey
-snarkjs plonk setup circuit.r1cs phase2_start.ptau circuit_final.zkey
-
-# export vk
-snarkjs zkey export verificationkey circuit_final.zkey vk.json
-```
-
-## CLI
-
-### Deploy a stateless zkapp
-
-Alice can deploy a stateless zkapp (for example, `examples/circuit/stateless.circom`) with the following command:
+Alice can deploy a stateless zkapp with the following command:
 
 ```shell
 RPC_WALLET="mywallet" RPC_ADDRESS="http://146.190.33.39:18331" RPC_AUTH="root:hellohello" cargo run --bin cli -- deploy-transaction --circom-circuit-path examples/circuit/stateless.circom --satoshi-amount 1000
 ```
 
-### Deploy a statefull zkapp
+This will lock 1,000 satoshis in the zkapp and return the transaction ID of the transaction that deployed the zkapp. A stateless zkapp is recognizable as a tranasction that locks funds to the zkBitcoin wallet, and also contains an output authenticating the compiled smart contract (so-called `OP_RETURN` outputs).
 
-Alice can deploy a stateful zkapp (for example, `examples/circuit/stateful.circom`) with the following command:
+Bob can then unlock the funds from the stateless zkapp (contained at some transaction ID) with the following command:
+
+```shell
+ENDPOINT="http://127.0.0.1:6666" RPC_WALLET="mywallet" RPC_ADDRESS="http://146.190.33.39:18331" RPC_AUTH="root:hellohello" cargo run --bin cli -- unlock-funds-request --txid "e793bdd8dfdd9912d971790a5f385ad3f1215dce97e25dbefe5449faba632836" --circom-circuit-path examples/circuit/stateless.circom --proof-inputs '{"preimage":["1"]}' --recipient-address "tb1q6nkpv2j9lxrm6h3w4skrny3thswgdcca8cx9k6"
+```
+
+The `ENDPOINT` environment variable is the URL of the orchestrator.
+
+### Stateful zkapps
+
+A stateful zkapp is a zkapp that can be updated without consuming the zkapp (unlike stateless zkapps). 
+
+An example of a stateful zkapp is in [`examples/circuit/stateful.circom`](examples/circuit/stateful.circom). A stateful zkapp always contains a number of additional public inputs, allowing an execution to authenticate the zkapp state transition, as well as the amounts being withdrawn and deposited:
+
+```circom
+template Main() {
+    signal output new_state;
+    signal input prev_state;
+    signal input truncated_txid; // this should not affect output
+    signal input amount_out;
+    signal input amount_in;
+```
+
+Alice can deploy a stateful zkapp with the following command:
 
 ```shell
 RPC_WALLET="mywallet" RPC_ADDRESS="http://146.190.33.39:18331" RPC_AUTH="root:hellohello" cargo run --bin cli -- deploy-transaction --circom-circuit-path examples/circuit/stateful.circom --initial-state "1" --satoshi-amount 1000     
 ```
 
-### Unlock funds command
-
-Bob can unlock funds with the following command:
+Bob can then use the stateful zkapps with the following command:
 
 ```shell
-ENDPOINT="http://127.0.0.1:6666" RPC_WALLET="mywallet" RPC_ADDRESS="http://146.190.33.39:18331" RPC_AUTH="root:hellohello" cargo run --bin cli -- unlock-funds-request --txid "e793bdd8dfdd9912d971790a5f385ad3f1215dce97e25dbefe5449faba632836" --circom-circuit-path examples/circuit/stateful.circom --proof-inputs '{"preimage":["1"]}' --recipient-address "tb1q6nkpv2j9lxrm6h3w4skrny3thswgdcca8cx9k6"
+ENDPOINT="http://127.0.0.1:6666" RPC_WALLET="mywallet" RPC_ADDRESS="http://146.190.33.39:18331" RPC_AUTH="root:hellohello" cargo run --bin cli -- unlock-funds-request --circom-circuit-path examples/circuit/stateful.circom --proof-inputs '{"amount_in":["1"], "amount_out":["1"]}' --recipient-address "tb1q6vjawwska63qxf77rrm5uwqev0ma8as8d0mkrt" --txid "76763d6130ee460ede2739e0f38ea4d61cc940b00af5eab83e5afb0fcc837b91"
 ```
 
-The `ENDPOINT` environment variable is the URL of the orchestrator (see next section).
+specifying the following inputs:
 
-### Generate committee with trusted dealer
+* `amount_out`: amount being withdrawn
+* `amount_in`: amount being deposited
 
-```shell
-cargo run --bin cli -- generate-committee --num 3 --threshold 2 --output-dir tests/
-```
+Other inputs will be automatically filled in (for example, it will use the zkapp's state as `prev_state` input).
 
-### Start a committee node 
+The `ENDPOINT` environment variable is the URL of the orchestrator.
 
-```shell
-RPC_WALLET="mywallet" RPC_ADDRESS="http://146.190.33.39:18331" RPC_AUTH="root:hellohello" cargo run -- start-committee-node --key-path examples/committee/key-0.json --publickey-package-path examples/committee/publickey-package.json --address "127.0.0.1:8891"
-```
+## Tell me more
 
-### Start an orchestrator/coordinator?
-
-```shell
-RPC_WALLET="mywallet" RPC_ADDRESS="http://146.190.33.39:18331" RPC_AUTH="root:hellohello" cargo run  -- start-orchestrator --threshold 2 --publickey-package-path examples/committee/publickey-package.json --committee-cfg-path examples/committee/committee-cfg.json
-```
-
-then you can query it like so:
-
-```shell
-curl -X POST http://127.0.0.1:8888 -H 'Content-Type: application/json' -d '{"jsonrpc": "2.0", "id": "thing", "method":"unlock_funds","params": [{"txid": "...", "vk": "...", "proof":"...", "public_inputs": []}]}'
-```
-
-or with the unlock funds CLI command.
+You can read more about zkBitcoin in [our documentation](docs/), and about advanced usage in [our developer documentation](DEVELOPER.md).

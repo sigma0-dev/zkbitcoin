@@ -190,10 +190,8 @@ mod tests {
     use rand_chacha::ChaCha20Rng;
 
     use crate::frost::{gen_frost_keys, sign_transaction_frost, to_xonly_pubkey};
-    use crate::{
-        constants::ZKBITCOIN_ADDRESS,
-        json_rpc_stuff::{send_raw_transaction, TransactionOrHex},
-    };
+    use crate::json_rpc_stuff::{send_raw_transaction, TransactionOrHex};
+    use crate::taproot_addr_from;
 
     use super::*;
     /*
@@ -276,10 +274,7 @@ mod tests {
         let vout = 0;
         let satoshi_amount = Amount::from_sat(amount);
 
-        let bob_address = Address::from_str(ZKBITCOIN_ADDRESS)
-            .unwrap()
-            .require_network(Network::Testnet)
-            .unwrap();
+        let bob_address = taproot_addr_from(ZKBITCOIN_PUBKEY).unwrap();
 
         let fee_bitcoin_sat = 400;
         let fee_zkbitcoin_sat = 100;
@@ -324,10 +319,7 @@ mod tests {
         let vout = 0;
         let satoshi_amount = Amount::from_sat(1000);
 
-        let bob_address = Address::from_str(ZKBITCOIN_ADDRESS)
-            .unwrap()
-            .require_network(Network::Testnet)
-            .unwrap();
+        let bob_address = taproot_addr_from(ZKBITCOIN_PUBKEY).unwrap();
 
         let smart_contract = SmartContract {
             locked_value: satoshi_amount,
