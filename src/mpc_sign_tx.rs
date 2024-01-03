@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use anyhow::{Context, Result};
+use anyhow::{ensure, Context, Result};
 use bitcoin::{
     absolute::LockTime,
     sighash::{Prevouts, SighashCache},
@@ -8,7 +8,6 @@ use bitcoin::{
     Address, Amount, OutPoint, PublicKey, ScriptBuf, Sequence, TapSighashType, Transaction, TxIn,
     TxOut, Txid, Witness,
 };
-use itertools::Itertools;
 use secp256k1::{hashes::Hash, All, Secp256k1, XOnlyPublicKey};
 
 use crate::{
@@ -22,6 +21,7 @@ use crate::{
 use crate::{constants::ZKBITCOIN_PUBKEY, json_rpc_stuff::RpcCtx};
 
 pub fn get_digest_to_hash(
+    prev_outs: &[TxOut],
     transaction: &bitcoin::Transaction,
     smart_contract: &SmartContract,
 ) -> Result<[u8; 32]> {
@@ -44,21 +44,14 @@ pub fn get_digest_to_hash(
         })
         .context("could not find a zkapp being used in the given transaction")?;
 
-    // TODO: only keep track of one prev_outs in the smart contract
-    let thing = {
-        // hack: we use dummies for other inputs
-        let dummy_txout = TxOut {
-            value: Amount::from_sat(0),
-            script_pubkey: ScriptBuf::new(),
-        };
-        let mut thing = vec![dummy_txout; transaction.input.len()];
-        thing[input_idx] =
-            smart_contract.prev_outs[smart_contract.vout_of_zkbitcoin_utxo as usize].clone();
-        thing
-    };
-    let prev_outs = Prevouts::All(&thing);
+    // sanity check
+    ensure!(
+        prev_outs.len() == transaction.input.len(),
+        "the given prev_out parameter doesn't match the number of inputs in the given transaction"
+    );
 
     // get hash
+    let prev_outs = Prevouts::All(prev_outs);
     cache.taproot_encode_signing_data_to(
         &mut sig_msg,
         input_idx,
@@ -310,7 +303,6 @@ mod tests {
             vk_hash: [0; 32],
             state: None,
             vout_of_zkbitcoin_utxo: 0,
-            prev_outs: vec![],
         };
         let mut tx = create_transaction(&smart_contract, txid, bob_address);
 
@@ -354,7 +346,6 @@ mod tests {
             vk_hash: [0; 32],
             state: None,
             vout_of_zkbitcoin_utxo: 0,
-            prev_outs: vec![],
         };
         let mut tx = create_transaction(&smart_contract, txid, bob_address);
 

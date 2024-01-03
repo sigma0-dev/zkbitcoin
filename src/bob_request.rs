@@ -3,7 +3,7 @@ use std::{collections::HashMap, path::Path, str::FromStr, vec};
 use anyhow::{bail, ensure, Context, Result};
 use bitcoin::{
     opcodes::all::OP_RETURN, script::Instruction, Address, Amount, Denomination, OutPoint,
-    PublicKey, Transaction, Txid,
+    PublicKey, Transaction, TxOut, Txid,
 };
 use num_bigint::BigUint;
 use serde::{Deserialize, Serialize};
@@ -15,7 +15,8 @@ use crate::{
         ZKBITCOIN_FEE_PUBKEY, ZKBITCOIN_PUBKEY,
     },
     json_rpc_stuff::{
-        createrawtransaction, fund_raw_transaction, json_rpc_request, TransactionOrHex,
+        createrawtransaction, fund_raw_transaction, get_transaction, json_rpc_request,
+        TransactionOrHex,
     },
     p2tr_script_to,
     plonk::PublicInputs,
@@ -88,6 +89,10 @@ pub struct BobRequest {
 
     /// In case of stateful zkapps, the update that can be converted as public inputs.
     pub update: Option<Update>,
+
+    /// List of all the [TxOut] pointed out by the inputs.
+    /// (This is needed to sign the transaction.)
+    pub prev_outs: Vec<TxOut>,
 }
 
 impl BobRequest {
@@ -101,10 +106,10 @@ impl BobRequest {
         // fetch smart contract we want to use
         let smart_contract = fetch_smart_contract(&rpc_ctx, txid).await?;
 
-        println!(
-            "- Bob's trying to use this smart contract: {:#?}",
-            smart_contract
-        );
+        // println!(
+        //     "- Bob's trying to use this smart contract: {:#?}",
+        //     smart_contract
+        // );
 
         // create a proof with a 0 txid
         // (we expect the proof to give the same `new_state` with the correct `truncated_txid` later)
@@ -272,7 +277,7 @@ impl BobRequest {
             None
         };
 
-        //
+        // compute zkapp input as the input that uses the zkapp
         let zkapp_input = tx
             .input
             .iter()
@@ -280,12 +285,34 @@ impl BobRequest {
             .find(|(_, x)| x.previous_output.txid == txid)
             .context("internal error: the transaction does not contain the zkapp being used")?
             .0;
+
+        // compute prev_outs as all the TxOut pointed out by the inputs
+        let mut prev_outs = vec![];
+        for (input_idx, input) in tx.input.iter().enumerate() {
+            let (_, tx, confirmations) =
+                get_transaction(rpc_ctx, input.previous_output.txid).await?;
+            ensure!(
+                confirmations >= MINIMUM_CONFIRMATIONS,
+                "one of the input ({}) is not confirmed yet",
+                input.previous_output.txid
+            );
+
+            prev_outs.push(
+                tx.output
+                    .get(input.previous_output.vout as usize)
+                    .context(format!("the input {input_idx} does not exist"))?
+                    .clone(),
+            );
+        }
+
+        // create request
         let res = Self {
             tx,
             zkapp_input,
             vk,
             proof,
             update,
+            prev_outs,
         };
 
         //println!("Bob's request: {:#?}", res);
@@ -476,10 +503,6 @@ pub struct SmartContract {
     pub vk_hash: [u8; 32],
     pub state: Option<String>,
     pub vout_of_zkbitcoin_utxo: u32,
-
-    /// _All_ the outputs of the deploy transaction.
-    /// (needed to sign a transaction to unlock the funds).
-    pub prev_outs: Vec<bitcoin::TxOut>,
 }
 
 impl SmartContract {
@@ -653,7 +676,6 @@ pub fn extract_smart_contract_from_tx(
         vk_hash,
         state,
         vout_of_zkbitcoin_utxo: vout as u32,
-        prev_outs: raw_tx.output.clone(),
     };
     Ok(smart_contract)
 }
@@ -661,30 +683,8 @@ pub fn extract_smart_contract_from_tx(
 /// Fetch the smart contract on-chain from the txid.
 pub async fn fetch_smart_contract(ctx: &RpcCtx, txid: bitcoin::Txid) -> Result<SmartContract> {
     // fetch transaction + metadata based on txid
-    let (transaction, confirmations) = {
-        println!("- fetching txid {txid}", txid = txid);
-
-        let response = json_rpc_request(
-            ctx,
-            "gettransaction",
-            &[
-                serde_json::value::to_raw_value(&serde_json::Value::String(txid.to_string()))
-                    .unwrap(),
-            ],
-        )
-        .await
-        .context("gettransaction error")?;
-
-        // TODO: get rid of unwrap in here
-        let response: bitcoincore_rpc::jsonrpc::Response = serde_json::from_str(&response)?;
-        let parsed: bitcoincore_rpc::json::GetTransactionResult = response.result()?;
-        let tx: Transaction = bitcoin::consensus::encode::deserialize(&parsed.hex)?;
-        let actual_hex = hex::encode(&parsed.hex);
-
-        println!("- tx found: (in hex): {actual_hex}");
-
-        (tx, parsed.info.confirmations)
-    };
+    println!("- fetching txid {txid}", txid = txid);
+    let (_tx_hex, transaction, confirmations) = get_transaction(ctx, txid).await?;
 
     // enforce that the smart contract was confirmed
     ensure!(

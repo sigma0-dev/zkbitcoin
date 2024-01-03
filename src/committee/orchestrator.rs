@@ -21,7 +21,7 @@ use secp256k1::XOnlyPublicKey;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    bob_request::BobRequest,
+    bob_request::{BobRequest, BobResponse},
     committee::node::Round1Response,
     constants::ZKBITCOIN_PUBKEY,
     frost,
@@ -67,7 +67,7 @@ impl Orchestrator {
     }
 
     /// Handles bob request from A to Z.
-    pub async fn handle_request(&self, bob_request: &BobRequest) -> Result<Txid> {
+    pub async fn handle_request(&self, bob_request: &BobRequest) -> Result<BobResponse> {
         //
         // Validate transaction before forwarding it, and get smart contract
         //
@@ -121,7 +121,7 @@ impl Orchestrator {
         //
         // Produce transaction and digest
         //
-        let message = get_digest_to_hash(&bob_request.tx, &smart_contract)?;
+        let message = get_digest_to_hash(&bob_request.prev_outs, &bob_request.tx, &smart_contract)?;
 
         //
         // Round 2
@@ -261,17 +261,22 @@ impl Orchestrator {
             .witness = witness;
 
         //
+        Ok(BobResponse {
+            unlocked_tx: transaction,
+        })
+
+        //
         // Broadcast transaction
         //
 
-        println!("- attempting to broadcast transaction");
-        let txid = send_raw_transaction(
-            &self.bitcoin_rpc_ctx,
-            TransactionOrHex::Transaction(&transaction),
-        )
-        .await?;
+        // println!("- attempting to broadcast transaction");
+        // let txid = send_raw_transaction(
+        //     &self.bitcoin_rpc_ctx,
+        //     TransactionOrHex::Transaction(&transaction),
+        // )
+        // .await?;
 
-        Ok(txid)
+        // Ok(txid)
     }
 }
 
@@ -280,13 +285,16 @@ impl Orchestrator {
 //
 
 /// Bob's request to unlock funds from a smart contract.
-async fn unlock_funds(params: Params<'static>, context: Arc<Orchestrator>) -> RpcResult<Txid> {
+async fn unlock_funds(
+    params: Params<'static>,
+    context: Arc<Orchestrator>,
+) -> RpcResult<BobResponse> {
     // get bob request
     let bob_request: [BobRequest; 1] = params.parse()?;
     let bob_request = &bob_request[0];
     println!("received request: {:?}", bob_request);
 
-    let txid = context.handle_request(bob_request).await.map_err(|e| {
+    let bob_response = context.handle_request(bob_request).await.map_err(|e| {
         ErrorObjectOwned::owned(
             jsonrpsee_types::error::UNKNOWN_ERROR_CODE,
             "error while unlocking funds",
@@ -294,7 +302,7 @@ async fn unlock_funds(params: Params<'static>, context: Arc<Orchestrator>) -> Rp
         )
     })?;
 
-    RpcResult::Ok(txid)
+    RpcResult::Ok(bob_response)
 }
 
 pub async fn run_server(

@@ -4,7 +4,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use bitcoin::{Transaction, Txid};
+use bitcoin::{Transaction, TxOut, Txid};
 use frost_secp256k1_tr::round1;
 use jsonrpsee::{
     server::{RpcModule, Server},
@@ -47,10 +47,13 @@ pub struct LocalSigningTask {
     pub proof_hash: [u8; 32],
     /// The smart contract that locked the value.
     pub smart_contract: SmartContract,
-    /// Bob's address (taken from the first public input).
+    /// transaction to sign.
     pub tx: Transaction,
+    /// The previous outputs that are being spent by the transaction (needed to sign).
+    pub prev_outs: Vec<TxOut>,
     /// The nonces behind these commitments
     pub nonces: round1::SigningNonces,
+    // TODO: should we keep track of commitments here also to double check?
 }
 
 //
@@ -131,6 +134,7 @@ async fn round_1_signing(
                 smart_contract,
                 tx: bob_request.tx.clone(),
                 nonces,
+                prev_outs: bob_request.prev_outs.clone(),
             },
         );
     }
@@ -177,6 +181,7 @@ async fn round_2_signing(
         smart_contract,
         tx,
         nonces,
+        prev_outs,
     } = {
         let mut signing_tasks = context.signing_tasks.write().unwrap();
         if let Some(local_signing_task) = signing_tasks.remove(&round2request.txid) {
@@ -199,7 +204,7 @@ async fn round_2_signing(
     };
 
     // deterministically create transaction
-    let message = get_digest_to_hash(&tx, &smart_contract).map_err(|err| {
+    let message = get_digest_to_hash(&prev_outs, &tx, &smart_contract).map_err(|err| {
         ErrorObjectOwned::owned(
             jsonrpsee_types::error::UNKNOWN_ERROR_CODE,
             "error while hashing",

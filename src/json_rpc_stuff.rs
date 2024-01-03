@@ -274,3 +274,20 @@ pub async fn createrawtransaction<'a>(
 
     Ok((tx_hex, tx))
 }
+
+pub async fn get_transaction<'a>(ctx: &RpcCtx, txid: Txid) -> Result<(String, Transaction, usize)> {
+    let response = json_rpc_request(
+        ctx,
+        "gettransaction",
+        &[serde_json::value::to_raw_value(&serde_json::Value::String(txid.to_string())).unwrap()],
+    )
+    .await
+    .context("gettransaction error")?;
+
+    let response: bitcoincore_rpc::jsonrpc::Response = serde_json::from_str(&response)?;
+    let parsed: bitcoincore_rpc::json::GetTransactionResult = response.result()?;
+    let tx: Transaction = bitcoin::consensus::encode::deserialize(&parsed.hex)?;
+    let tx_hex = hex::encode(&parsed.hex);
+
+    Ok((tx_hex, tx, parsed.info.confirmations as usize))
+}

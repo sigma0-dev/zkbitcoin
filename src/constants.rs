@@ -13,7 +13,7 @@ pub const ZKBITCOIN_FEE_PUBKEY: &str =
     "037299ffd702cdc0537d8bb92f216ccc6058ad804741c4293cc82288f453dadadc"; // TODO: change this to a real pubkey in prod
 
 /// Number of confirmation required for a transaction to be considered final.
-pub const MINIMUM_CONFIRMATIONS: i32 = 0; // TODO: bad in prod?
+pub const MINIMUM_CONFIRMATIONS: usize = 0; // TODO: bad in prod?
 
 /// The JSON-RPC version to use with bitcoind.
 pub const BITCOIN_JSON_RPC_VERSION: &str = "1.0";
