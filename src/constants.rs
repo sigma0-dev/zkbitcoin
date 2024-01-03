@@ -27,3 +27,10 @@ pub const BITCOIN_JSON_RPC_VERSION: &str = "1.0";
 pub const FEE_ZKBITCOIN_SAT: u64 = 546; // see https://whattodevnow.medium.com/how-to-calculate-the-real-minimum-satoshis-amount-for-a-utxo-5941628ad3e8
 
 pub const ORCHESTRATOR_ADDRESS: &str = "127.0.0.1:6666";
+
+pub const CIRCOM_ETH_PRIME: &str =
+    "21888242871839275222246405745257275088548364400416034343698204186575808495617";
+
+pub const CIRCOM_ETH_PRIME_BITLEN: usize = 254;
+
+pub const CIRCOM_ETH_PRIME_BYTELEN: usize = 32;

@@ -1,20 +1,56 @@
 use std::str::FromStr;
 
-use anyhow::Result;
+use anyhow::{ensure, Result};
 use bitcoin::key::UntweakedPublicKey;
 use bitcoin::{
     absolute::LockTime, transaction::Version, Amount, PublicKey, ScriptBuf, Transaction, TxOut,
 };
+use num_traits::{FromPrimitive, Num, One, PrimInt, ToPrimitive, Zero};
 
-use crate::constants::ZKBITCOIN_PUBKEY;
+use crate::constants::{CIRCOM_ETH_PRIME, ZKBITCOIN_PUBKEY};
 use crate::json_rpc_stuff::{
     fund_raw_transaction, send_raw_transaction, sign_transaction, RpcCtx, TransactionOrHex,
 };
 
+/// Creates a P2TR script from a public key.
 pub fn p2tr_script_to(zkbitcoin_pubkey: PublicKey) -> ScriptBuf {
     let secp = secp256k1::Secp256k1::default();
     let internal_key = UntweakedPublicKey::from(zkbitcoin_pubkey);
     ScriptBuf::new_p2tr(&secp, internal_key, None)
+}
+
+pub fn circom_field_to_bytes(field: &str) -> Result<Vec<u8>> {
+    let big = num_bigint::BigUint::from_str_radix(field, 10).unwrap();
+    // sanity check
+    let prime_p = num_bigint::BigUint::from_str_radix(CIRCOM_ETH_PRIME, 10).unwrap(); // TODO: cache that value
+    ensure!(
+        prime_p > big,
+        "the field element given was bigger than the Circom prime"
+    );
+    Ok(big.to_bytes_be())
+}
+
+pub fn circom_field_from_bytes(bytes: &[u8]) -> Result<String> {
+    let prime_p = num_bigint::BigUint::from_str_radix(CIRCOM_ETH_PRIME, 10).unwrap(); // TODO: cache that value
+    let big = num_bigint::BigUint::from_bytes_be(bytes);
+    ensure!(
+        prime_p > big,
+        "the bytes given can't be deserialized as a Circom field element"
+    );
+    Ok(big.to_str_radix(10))
+}
+
+pub fn op_return_script_for(
+    vk_hash: &[u8; 32],
+    initial_state: Option<String>,
+) -> Result<ScriptBuf> {
+    let mut data = vk_hash.to_vec();
+    if let Some(initial_state) = initial_state {
+        data.extend(circom_field_to_bytes(&initial_state)?);
+        assert!(data.len() < 64);
+    }
+    let thing: &bitcoin::script::PushBytes = data.as_slice().try_into().unwrap();
+    Ok(ScriptBuf::new_op_return(&thing))
 }
 
 /// Generates and broadcasts a transaction to the network.
@@ -23,7 +59,7 @@ pub fn p2tr_script_to(zkbitcoin_pubkey: PublicKey) -> ScriptBuf {
 pub async fn generate_and_broadcast_transaction(
     ctx: &RpcCtx,
     vk_hash: &[u8; 32],
-    initial_state: Vec<String>,
+    initial_state: Option<String>,
     satoshi_amount: u64,
 ) -> Result<bitcoin::Txid> {
     // 1. create transaction based on VK + amount
@@ -40,34 +76,14 @@ pub async fn generate_and_broadcast_transaction(
             });
         }
 
-        // second output is VK
+        // second output is VK + initial state
         {
-            let script_pubkey = ScriptBuf::new_op_return(vk_hash);
+            let script_pubkey = op_return_script_for(vk_hash, initial_state)?;
             let value = script_pubkey.dust_value();
             outputs.push(TxOut {
                 value,
                 script_pubkey,
             });
-        }
-
-        // other outputs are the initial state (for statefull zkapps)
-        if initial_state.is_empty() {
-            println!("- stateless zkapp detected");
-        } else {
-            println!(
-                "- stateful zkapp detected (with {} public inputs)",
-                initial_state.len()
-            );
-
-            for pi in initial_state {
-                let thing: &bitcoin::script::PushBytes = pi.as_bytes().try_into().unwrap();
-                let script_pubkey = ScriptBuf::new_op_return(thing);
-                let value = script_pubkey.dust_value();
-                outputs.push(TxOut {
-                    value,
-                    script_pubkey,
-                });
-            }
         }
 
         // build tx
@@ -168,7 +184,7 @@ mod tests {
 
         let ctx = RpcCtx::for_testing();
 
-        let response = generate_and_broadcast_transaction(&ctx, &vk, vec![], satoshi_amount)
+        let response = generate_and_broadcast_transaction(&ctx, &vk, None, satoshi_amount)
             .await
             .unwrap();
 
