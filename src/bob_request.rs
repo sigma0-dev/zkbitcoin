@@ -464,6 +464,7 @@ pub async fn send_bob_request(address: &str, request: BobRequest) -> Result<BobR
 /// All the metadata that describes a smart contract.
 #[derive(Clone, Debug)]
 pub struct SmartContract {
+    pub txid: Txid,
     pub locked_value: Amount,
     pub vk_hash: [u8; 32],
     pub state: Option<String>,
@@ -640,6 +641,7 @@ pub fn extract_smart_contract_from_tx(
     };
 
     let smart_contract = SmartContract {
+        txid: raw_tx.txid(),
         locked_value,
         vk_hash,
         state,

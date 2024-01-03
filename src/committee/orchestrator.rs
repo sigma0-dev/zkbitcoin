@@ -121,7 +121,7 @@ impl Orchestrator {
         //
         // Produce transaction and digest
         //
-        let message = get_digest_to_hash(&bob_request.tx, &smart_contract);
+        let message = get_digest_to_hash(&bob_request.tx, &smart_contract)?;
 
         //
         // Round 2

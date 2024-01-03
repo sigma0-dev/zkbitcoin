@@ -199,7 +199,13 @@ async fn round_2_signing(
     };
 
     // deterministically create transaction
-    let message = get_digest_to_hash(&tx, &smart_contract);
+    let message = get_digest_to_hash(&tx, &smart_contract).map_err(|err| {
+        ErrorObjectOwned::owned(
+            jsonrpsee_types::error::UNKNOWN_ERROR_CODE,
+            "error while hashing",
+            Some(format!("the request didn't validate: {err}")),
+        )
+    })?;
 
     // sanity check
     if round2request.message != message {

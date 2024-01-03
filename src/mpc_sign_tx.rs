@@ -1,5 +1,6 @@
 use std::str::FromStr;
 
+use anyhow::{Context, Result};
 use bitcoin::{
     absolute::LockTime,
     sighash::{Prevouts, SighashCache},
@@ -22,7 +23,7 @@ use crate::{constants::ZKBITCOIN_PUBKEY, json_rpc_stuff::RpcCtx};
 pub fn get_digest_to_hash(
     transaction: &bitcoin::Transaction,
     smart_contract: &SmartContract,
-) -> [u8; 32] {
+) -> Result<[u8; 32]> {
     // TODO: return Result
     // the sighash flag is always ALL
     let hash_ty = TapSighashType::All;
@@ -32,16 +33,32 @@ pub fn get_digest_to_hash(
     let mut sig_msg = Vec::new();
 
     // TODO: only keep track of one prev_outs in the smart contract
-    let thing = [smart_contract.prev_outs[smart_contract.vout_of_zkbitcoin_utxo as usize].clone()];
-    let prev_outs = Prevouts::All(&thing);
+    //let thing = [smart_contract.prev_outs[smart_contract.vout_of_zkbitcoin_utxo as usize].clone()];
+    let thing = &smart_contract.prev_outs;
+    let prev_outs = Prevouts::All(thing);
 
-    cache
-        .taproot_encode_signing_data_to(&mut sig_msg, 0, &prev_outs, None, None, hash_ty)
-        .unwrap();
-    let sighash = cache
-        .taproot_signature_hash(0, &prev_outs, None, None, hash_ty)
-        .unwrap();
-    sighash.to_byte_array()
+    // input to sign is the one containing the zkapp
+    let (input_idx, _) = transaction
+        .input
+        .iter()
+        .enumerate()
+        .find(|(_, input)| {
+            input.previous_output.txid == smart_contract.txid
+                && input.previous_output.vout == smart_contract.vout_of_zkbitcoin_utxo
+        })
+        .context("could not find a zkapp being used in the given transaction")?;
+
+    // get hash
+    cache.taproot_encode_signing_data_to(
+        &mut sig_msg,
+        input_idx,
+        &prev_outs,
+        None,
+        None,
+        hash_ty,
+    )?;
+    let sighash = cache.taproot_signature_hash(0, &prev_outs, None, None, hash_ty)?;
+    Ok(sighash.to_byte_array())
 }
 
 pub fn create_transaction(
@@ -278,6 +295,7 @@ mod tests {
         let fee_bitcoin_sat = 400;
         let fee_zkbitcoin_sat = 100;
         let smart_contract = SmartContract {
+            txid,
             locked_value: satoshi_amount,
             vk_hash: [0; 32],
             state: None,
@@ -321,6 +339,7 @@ mod tests {
         let bob_address = taproot_addr_from(ZKBITCOIN_PUBKEY).unwrap();
 
         let smart_contract = SmartContract {
+            txid,
             locked_value: satoshi_amount,
             vk_hash: [0; 32],
             state: None,
