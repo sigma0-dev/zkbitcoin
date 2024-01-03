@@ -282,8 +282,7 @@ async fn main() -> Result<()> {
                 initial_state.as_ref(),
                 *satoshi_amount,
             )
-            .await
-            .unwrap();
+            .await?;
 
             println!("txid: {}", txid);
         }

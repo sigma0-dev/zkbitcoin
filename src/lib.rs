@@ -1,5 +1,6 @@
 //! zkBitcoin.
 
+use anyhow::Context;
 use secp256k1::hashes::Hash;
 
 pub mod committee;
@@ -69,7 +70,7 @@ pub fn p2tr_script_to(zkbitcoin_pubkey: bitcoin::PublicKey) -> bitcoin::ScriptBu
 }
 
 pub fn circom_field_to_bytes(field: &str) -> anyhow::Result<Vec<u8>> {
-    let big = <num_bigint::BigUint as num_traits::Num>::from_str_radix(field, 10).unwrap();
+    let big = <num_bigint::BigUint as num_traits::Num>::from_str_radix(field, 10)?;
     // sanity check
     let prime_p =
         <num_bigint::BigUint as num_traits::Num>::from_str_radix(constants::CIRCOM_ETH_PRIME, 10)
@@ -99,7 +100,9 @@ pub fn op_return_script_for(
 ) -> anyhow::Result<bitcoin::ScriptBuf> {
     let mut data = vk_hash.to_vec();
     if let Some(initial_state) = initial_state {
-        data.extend(circom_field_to_bytes(&initial_state)?);
+        data.extend(
+            circom_field_to_bytes(&initial_state).context("incorrect initial state given")?,
+        );
         assert!(data.len() < 64);
     }
     let thing: &bitcoin::script::PushBytes = data.as_slice().try_into().unwrap();
