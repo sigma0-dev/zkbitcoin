@@ -76,8 +76,8 @@ bitcoin-cli -testnet -rpcconnect=146.190.33.39 -rpcport=18331 -rpcuser=root -rpc
 
 The addresses I've been using:
 
-* `tb1q5pxn428emp73saglk7ula0yx5j7ehegu6ud6ad`: the zkBitcoin address, where zkapps have to be sent to
-* `tb1q6nkpv2j9lxrm6h3w4skrny3thswgdcca8cx9k6`: the zkBitcoin fund, where fees are being paid to when using zkapps (deploying is free)
+* `tb1pxggs3tg09877hzqy6fhrg3wjat8c6jue83r3surjtwpgtsqwp5wqe5xpj5`: the zkBitcoin address, where zkapps have to be sent to.
+* `tb1pv7auuumlqm9kehlep4y83xcthyma5yvprvlx39k7xvveh48976sq7e6sr5`: the zkBitcoin fund, where fees are being paid to when using zkapps (deploying is free).
 * `tb1q6vjawwska63qxf77rrm5uwqev0ma8as8d0mkrt`: Bob address.
 
 It's a good idea to fund them from times to times using [a faucet](https://bitcoinfaucet.uo1.net/send.php).

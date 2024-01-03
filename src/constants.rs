@@ -10,7 +10,7 @@ pub const ZKBITCOIN_PUBKEY: &str =
 //pub const ZKBITCOIN_FEE_ADDRESS: &str = "tb1q6nkpv2j9lxrm6h3w4skrny3thswgdcca8cx9k6";
 
 pub const ZKBITCOIN_FEE_PUBKEY: &str =
-    "0322073bd964e8c70e4e8ebbc4108910332053cfab60558b75d5b752c41b9285a4"; // TODO: change this to a real pubkey in prod
+    "037299ffd702cdc0537d8bb92f216ccc6058ad804741c4293cc82288f453dadadc"; // TODO: change this to a real pubkey in prod
 
 /// Number of confirmation required for a transaction to be considered final.
 pub const MINIMUM_CONFIRMATIONS: i32 = 0; // TODO: bad in prod?

@@ -2,20 +2,17 @@ use std::{collections::HashMap, path::Path, str::FromStr, vec};
 
 use anyhow::{bail, ensure, Context, Result};
 use bitcoin::{
-    absolute::LockTime, opcodes::all::OP_RETURN, script::Instruction, transaction::Version,
-    Address, Amount, Denomination, OutPoint, PublicKey, ScriptBuf, Sequence, Transaction, TxIn,
-    TxOut, Txid, Witness,
+    consensus::Decodable, opcodes::all::OP_RETURN, script::Instruction, Address, Amount,
+    Denomination, OutPoint, PublicKey, Transaction, Txid,
 };
-use itertools::Itertools;
 use num_bigint::BigUint;
 use serde::{Deserialize, Serialize};
 
 use crate::{
     circom_field_from_bytes, circom_field_to_bytes,
     constants::{FEE_ZKBITCOIN_SAT, MINIMUM_CONFIRMATIONS, ZKBITCOIN_FEE_PUBKEY, ZKBITCOIN_PUBKEY},
-    get_network,
     json_rpc_stuff::{fund_raw_transaction, json_rpc_request, TransactionOrHex},
-    op_return_script_for, p2tr_script_to,
+    p2tr_script_to,
     plonk::PublicInputs,
     snarkjs::{self, verify_proof},
     taproot_addr_from, truncate_txid,
@@ -301,7 +298,7 @@ impl BobRequest {
                 }));
 
                 // the updated zkapp
-                let zkbitcoin_address = taproot_addr_from(ZKBITCOIN_FEE_PUBKEY)?;
+                let zkbitcoin_address = taproot_addr_from(ZKBITCOIN_PUBKEY)?;
                 outputs.push(serde_json::json!({
                     // TODO: this is incorrect as it's not a taproot address
                     zkbitcoin_address.to_string(): new_value.to_string_in(Denomination::Bitcoin)
@@ -349,6 +346,11 @@ impl BobRequest {
             }
             let tx_hex: String = response.result().unwrap();
             println!("{:?}", tx_hex);
+
+            println!(
+                "decoded raw tx: {:?}",
+                Transaction::consensus_decode(&mut &hex::decode(&tx_hex).unwrap()[..]).unwrap()
+            );
 
             // fund that transaction
             let (tx_hex, tx) = fund_raw_transaction(rpc_ctx, TransactionOrHex::Hex(tx_hex)).await?;

@@ -8,10 +8,13 @@ use zkbitcoin::{
     alice_sign_tx::generate_and_broadcast_transaction,
     bob_request::{send_bob_request, BobRequest},
     committee::orchestrator::{CommitteeConfig, Member},
-    constants::{BITCOIN_JSON_RPC_VERSION, ORCHESTRATOR_ADDRESS},
+    constants::{
+        BITCOIN_JSON_RPC_VERSION, ORCHESTRATOR_ADDRESS, ZKBITCOIN_FEE_PUBKEY, ZKBITCOIN_PUBKEY,
+    },
     frost, get_network,
     json_rpc_stuff::{send_raw_transaction, sign_transaction, RpcCtx, TransactionOrHex},
     snarkjs::{self, CompilationResult},
+    taproot_addr_from,
 };
 
 #[derive(Parser)]
@@ -168,10 +171,21 @@ enum Commands {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // init log
     env_logger::init();
 
-    let cli = Cli::parse();
+    // debug info
+    println!(
+        "zkbitcoin_address: {}",
+        taproot_addr_from(ZKBITCOIN_PUBKEY).unwrap().to_string()
+    );
+    println!(
+        "zkbitcoin_fund_address: {}",
+        taproot_addr_from(ZKBITCOIN_FEE_PUBKEY).unwrap().to_string()
+    );
 
+    // parse CLI
+    let cli = Cli::parse();
     match &cli.command {
         // Alice's command
         Commands::DeployTransaction {
