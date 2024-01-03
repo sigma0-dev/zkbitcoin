@@ -16,6 +16,7 @@ use crate::{
         FEE_ZKBITCOIN_SAT, MINIMUM_CONFIRMATIONS, ZKBITCOIN_ADDRESS, ZKBITCOIN_FEE_ADDRESS,
         ZKBITCOIN_FEE_PUBKEY, ZKBITCOIN_PUBKEY,
     },
+    get_network,
     json_rpc_stuff::{fund_raw_transaction, json_rpc_request, TransactionOrHex},
     op_return_script_for, p2tr_script_to,
     plonk::PublicInputs,
@@ -102,6 +103,11 @@ impl BobRequest {
     ) -> Result<Self> {
         // fetch smart contract we want to use
         let smart_contract = fetch_smart_contract(&rpc_ctx, txid).await?;
+
+        println!(
+            "Bob's trying to use this smart contract: {:#?}",
+            smart_contract
+        );
 
         // create a proof with a 0 txid
         // (we expect the proof to give the same `new_state` with the correct `truncated_txid` later)
@@ -260,11 +266,16 @@ impl BobRequest {
                 }),
             ];
 
+            let taproot_fee_pubkey = bitcoin::PublicKey::from_str(ZKBITCOIN_FEE_PUBKEY).unwrap();
+            let internal_key = bitcoin::key::UntweakedPublicKey::from(taproot_fee_pubkey);
+            let secp = secp256k1::Secp256k1::default();
+            let taproot_fee_address = Address::p2tr(&secp, internal_key, None, get_network());
+
             let mut outputs = vec![
                 // first output is to zkBitcoinFund
                 // TODO: we need to create a taproot address here
                 serde_json::json!({
-                    ZKBITCOIN_FEE_ADDRESS.to_string(): Amount::from_sat(FEE_ZKBITCOIN_SAT).to_string_in(Denomination::Bitcoin),
+                    taproot_fee_address.to_string(): Amount::from_sat(FEE_ZKBITCOIN_SAT).to_string_in(Denomination::Bitcoin),
                 }),
             ];
 
@@ -403,6 +414,9 @@ impl BobRequest {
             proof,
             update,
         };
+
+        println!("Bob's request: {:#?}", res);
+
         Ok(res)
     }
 
@@ -567,7 +581,7 @@ pub async fn send_bob_request(address: &str, request: BobRequest) -> Result<BobR
 //
 
 /// All the metadata that describes a smart contract.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct SmartContract {
     pub locked_value: Amount,
     pub vk_hash: [u8; 32],
@@ -595,12 +609,12 @@ impl SmartContract {
     /// Returns true if the smart contract is stateless.
     fn is_stateless(&self) -> bool {
         // a stateless contract expects no public input
-        self.state.is_some()
+        self.state.is_none()
     }
 
     /// Returns true if the smart contract is stateful.
     fn is_stateful(&self) -> bool {
-        !self.is_stateless()
+        self.state.is_some()
     }
 
     // Returns the amount that is being withdrawn from the smart contract, and the remaining amount in the contract (0 if stateless).
