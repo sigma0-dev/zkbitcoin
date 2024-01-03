@@ -251,9 +251,7 @@ async fn main() -> Result<()> {
             );
 
             // sanity check for stateful zkapps
-            let initial_state = if num_public_inputs == 1 {
-                None
-            } else {
+            if num_public_inputs > 1 {
                 let double_state_len = vk.nPublic - 3; /* txid, amount_in, amount_out */
                 let state_len = double_state_len.checked_div(2).context("the VK")?;
                 {
@@ -271,24 +269,21 @@ async fn main() -> Result<()> {
                 ensure!(num_public_inputs == 3 /* txid, amount_in, amount_out */ + state_len * 2, "the circuit passed does not expect the right number of public inputs for a stateful zkapp");
 
                 // parse initial state
-                let initial_state = initial_state
-                    .clone()
-                    .context("an initial state should be passed for a stateful zkapp")?;
-                //let initial_state: Vec<String> = serde_json::from_str(&initial_state)?;
-
-                // ensure!(
-                //     state_len == initial_state.len(),
-                //     "the given initial state doesn't match the expected size of the circuit state ({state_len})"
-                // );
-
-                Some(initial_state)
-            };
+                ensure!(
+                    initial_state.is_some(),
+                    "an initial state should be passed for a stateful zkapp"
+                );
+            }
 
             // generate and broadcast deploy transaction
-            let txid =
-                generate_and_broadcast_transaction(&ctx, &vk_hash, initial_state, *satoshi_amount)
-                    .await
-                    .unwrap();
+            let txid = generate_and_broadcast_transaction(
+                &ctx,
+                &vk_hash,
+                initial_state.as_ref(),
+                *satoshi_amount,
+            )
+            .await
+            .unwrap();
 
             println!("txid: {}", txid);
         }

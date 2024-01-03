@@ -12,12 +12,12 @@ use bitcoin::{
 use secp256k1::{hashes::Hash, All, Secp256k1, XOnlyPublicKey};
 
 use crate::{
-    alice_sign_tx::p2tr_script_to,
     bob_request::SmartContract,
     constants::{FEE_ZKBITCOIN_SAT, ZKBITCOIN_FEE_PUBKEY},
     json_rpc_stuff::{
         fund_raw_transaction, send_raw_transaction, sign_transaction, TransactionOrHex,
     },
+    p2tr_script_to,
 };
 use crate::{constants::ZKBITCOIN_PUBKEY, json_rpc_stuff::RpcCtx};
 
@@ -286,7 +286,7 @@ mod tests {
         let smart_contract = SmartContract {
             locked_value: satoshi_amount,
             vk_hash: [0; 32],
-            public_inputs: vec![],
+            state: None,
             vout_of_zkbitcoin_utxo: 0,
             prev_outs: vec![],
         };
@@ -332,7 +332,7 @@ mod tests {
         let smart_contract = SmartContract {
             locked_value: satoshi_amount,
             vk_hash: [0; 32],
-            public_inputs: vec![],
+            state: None,
             vout_of_zkbitcoin_utxo: 0,
             prev_outs: vec![],
         };

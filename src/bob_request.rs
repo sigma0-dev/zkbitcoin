@@ -11,12 +11,13 @@ use num_bigint::BigUint;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    alice_sign_tx::p2tr_script_to,
+    circom_field_from_bytes, circom_field_to_bytes,
     constants::{
         FEE_ZKBITCOIN_SAT, MINIMUM_CONFIRMATIONS, ZKBITCOIN_ADDRESS, ZKBITCOIN_FEE_ADDRESS,
         ZKBITCOIN_FEE_PUBKEY, ZKBITCOIN_PUBKEY,
     },
     json_rpc_stuff::{fund_raw_transaction, json_rpc_request, TransactionOrHex},
+    op_return_script_for, p2tr_script_to,
     plonk::PublicInputs,
     snarkjs::{self, verify_proof},
     truncate_txid,
@@ -59,8 +60,8 @@ fn string_to_amount(amount: &str) -> Result<Amount> {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Update {
-    pub new_state: Vec<String>,
-    pub prev_state: Vec<String>,
+    pub new_state: String,
+    pub prev_state: String,
 
     /// The truncated txid should be rederived by the verifier.
     #[serde(skip)]
@@ -108,10 +109,10 @@ impl BobRequest {
         // and then we can compute the transaction ID
         // and then we can compute the proof on the correct public inputs (which include the transaction ID).
 
-        let new_state = if smart_contract.is_stateful() {
+        let new_state = if let Some(prev_state) = &smart_contract.state {
             // truncated_txid = 0
             proof_inputs.insert("truncated_txid".to_string(), vec!["0".to_string()]);
-            proof_inputs.insert("prev_state".to_string(), smart_contract.prev_state()?);
+            proof_inputs.insert("prev_state".to_string(), vec![prev_state.to_string()]);
 
             // prove
             let (_proof, public_inputs, _vk) =
@@ -120,9 +121,9 @@ impl BobRequest {
             // extract new_state
             let new_state = public_inputs
                 .0
-                .get(0..smart_contract.state_len())
-                .context("the full public input does not contain a new state")?
-                .to_vec();
+                .get(0)
+                .cloned()
+                .context("the full public input does not contain a new state")?;
 
             Some(new_state)
         } else {
@@ -199,20 +200,14 @@ impl BobRequest {
                     script_pubkey: p2tr_script_to(zkbitcoin_pubkey),
                 });
 
-                // the vk
+                // the vk + new state
                 outputs.push(TxOut {
                     value: Amount::from_sat(0),
-                    script_pubkey: ScriptBuf::new_op_return(smart_contract.vk_hash),
+                    script_pubkey: op_return_script_for(
+                        &smart_contract.vk_hash,
+                        new_state.as_ref(),
+                    )?,
                 });
-
-                // the new state
-                for state_i in new_state.as_ref().unwrap() {
-                    let thing: &bitcoin::script::PushBytes = state_i.as_bytes().try_into().unwrap();
-                    outputs.push(TxOut {
-                        value: Amount::from_sat(0),
-                        script_pubkey: ScriptBuf::new_op_return(thing),
-                    })
-                }
             }
 
             Transaction {
@@ -305,12 +300,11 @@ impl BobRequest {
                 }));
 
                 // its vk + new state
-                let mut data = vec![hex::encode(smart_contract.vk_hash)];
-                for state_i in new_state.as_ref().unwrap() {
-                    data.push(hex::encode(state_i));
-                }
+                let new_state = new_state.as_ref().context("no new state")?;
+                let mut data = smart_contract.vk_hash.to_vec();
+                data.extend(circom_field_to_bytes(new_state)?);
                 outputs.push(serde_json::json!({
-                    "data": data,
+                    "data": hex::encode(data),
                 }));
             }
 
@@ -374,21 +368,19 @@ impl BobRequest {
         // and ensure it created the same new_state
         let update = if smart_contract.is_stateful() {
             let new_state = new_state.unwrap();
-            let state_len = smart_contract.state_len();
-            assert_ne!(state_len, 0);
             ensure!(
                 public_inputs.0.len()
-                    == state_len * 2 /* prev/new_state */ + 1 /* truncated txid */ + 1 /* amount_out */ + 1, /* amount_in */
+                    == 1 * 2 /* prev/new_state */ + 1 /* truncated txid */ + 1 /* amount_out */ + 1, /* amount_in */
                 "the number of public inputs is not correct"
             );
 
-            let new_state2 = &public_inputs.0[0..state_len];
+            let new_state2 = &public_inputs.0[0];
             ensure!(
-                new_state == new_state2,
+                &new_state == new_state2,
                 "the circuit must return the same output given different txid"
             );
 
-            Some(public_inputs.to_update(state_len))
+            Some(public_inputs.to_update())
         } else {
             None
         };
@@ -450,14 +442,11 @@ impl BobRequest {
             );
 
             // it contains the correct new state
-            let state_len = smart_contract.state_len();
-            let new_state_bytes = update
-                .new_state
-                .iter()
-                .map(|x| x.as_bytes().to_vec())
-                .collect_vec();
+            let new_state_observed = new_zkapp.state.context(
+                "the zkapp created as output is not stateful, but the consumed zkapp was stateful",
+            )?;
             ensure!(
-                new_zkapp.public_inputs == new_state_bytes,
+                new_state_observed == update.new_state,
                 "the updated zkapp does not contain the correct new state"
             );
 
@@ -494,16 +483,13 @@ impl BobRequest {
             "VK does not match the VK hash in the smart contract"
         );
 
-        // ensure that the vk makes sense with public inputs that are fixed
-        ensure!(smart_contract.public_inputs.len() <= self.vk.nPublic,"number of public inputs that are fixed is greater than the number of public inputs in the vk");
+        // TODO: do we need to check that vk.nPublic makes sense?
 
         // create truncated txid of Bob's transaction
         let truncated_txid = truncate_txid(bob_txid);
 
         // retrieve amount to be moved
-        let public_inputs = if smart_contract.is_stateless() {
-            vec![truncated_txid]
-        } else {
+        let public_inputs = if let Some(prev_state) = &smart_contract.state {
             // ensure that we have an update
             let update = self
                 .update
@@ -511,24 +497,19 @@ impl BobRequest {
                 .context("an update was expected as the smart contract is stateful")?;
 
             // ensure that the smart contract expects the correct number of public inputs
-            let expected_len = smart_contract.public_inputs.len() * 2 /* prev state + new state */ + 1 /* truncated hash of bob address */ + 1 /* amount */;
+            let expected_len = 1 * 2 /* prev state + new state */ + 1 /* truncated hash of bob address */ + 1 /* amount */;
             ensure!(
                 self.vk.nPublic == expected_len,
                 "the smart contract is malformed"
             );
 
             // ensure that the previous state used is correctly used
-            // TODO: we don't need Bob to send us that information
-            let state_len = smart_contract.state_len();
-            for (pi1, pi2) in smart_contract.public_inputs.iter().zip(&update.prev_state) {
-                println!("pi1: {:?}", pi1);
-                println!("pi2: {:?}", pi2);
-                println!("pi2 as bytes: {:?}", pi2.as_bytes());
-                ensure!(pi1 == pi2.as_bytes(), "public inputs don't match");
-            }
+            ensure!(prev_state == &update.prev_state);
 
             //
-            PublicInputs::from_update(update, state_len, truncated_txid)?.0
+            PublicInputs::from_update(update, 1, truncated_txid)?.0
+        } else {
+            vec![truncated_txid]
         };
 
         // ensure that there's enough funds remaining to cover for bitcoin and zkBitcoin fee
@@ -580,7 +561,7 @@ pub async fn send_bob_request(address: &str, request: BobRequest) -> Result<BobR
 pub struct SmartContract {
     pub locked_value: Amount,
     pub vk_hash: [u8; 32],
-    pub public_inputs: Vec<Vec<u8>>,
+    pub state: Option<String>,
     pub vout_of_zkbitcoin_utxo: u32,
 
     /// _All_ the outputs of the deploy transaction.
@@ -589,23 +570,6 @@ pub struct SmartContract {
 }
 
 impl SmartContract {
-    fn state_len(&self) -> usize {
-        self.public_inputs.len()
-    }
-
-    fn prev_state(&self) -> Result<Vec<String>> {
-        let res: Result<Vec<String>> = self
-            .public_inputs
-            .iter()
-            .map(|x| {
-                // TODO: probably not the most compact encoding
-                String::from_utf8(x.to_vec())
-                    .context("public input does not contain a valid utf8 string")
-            })
-            .collect();
-        res
-    }
-
     fn updated_value(&self, request: &BobRequest) -> Result<Amount> {
         ensure!(
             self.is_stateful(),
@@ -621,7 +585,7 @@ impl SmartContract {
     /// Returns true if the smart contract is stateless.
     fn is_stateless(&self) -> bool {
         // a stateless contract expects no public input
-        self.public_inputs.is_empty()
+        self.state.is_some()
     }
 
     /// Returns true if the smart contract is stateful.
@@ -764,41 +728,43 @@ pub fn extract_smart_contract_from_tx(
         }
     };
 
-    // create a list of all the outputs following that one that are OP_RETURN outputs
-    let mut op_return_outputs = vec![];
-    for output in outputs {
-        if output.script_pubkey.is_op_return() {
-            let data = parse_op_return_data(&output.script_pubkey)?;
-            println!(
-                "- extracted {data:?} from OP_RETURN {:?}",
-                output.script_pubkey.as_script()
-            );
-            op_return_outputs.push(data);
-        }
-    }
+    // we expect an OP_RETURN output containing both the vk and the state (if any)
+    let (vk_hash, state) = {
+        // find the first OP_RETURN
+        let output = outputs
+            .find(|x| x.script_pubkey.is_op_return())
+            .context("Transaction has no OP_RETURN")?;
 
-    // ensure that the list at least contains the VK hash
-    // other elements in the list are presumed to contain public inputs
-    ensure!(
-        !op_return_outputs.is_empty(),
-        "Transaction has no OP_RETURN outputs"
-    );
+        // parse it
+        let data = parse_op_return_data(&output.script_pubkey)?;
+        println!(
+            "- extracted {data:?} from OP_RETURN {:?}",
+            output.script_pubkey.as_script()
+        );
 
-    // TODO: extract validate the vk hash against the given vk
-    let vk_hash = op_return_outputs[0].clone();
-    println!("- first op_return is vk hash: {:?}", vk_hash);
-    ensure!(
-        vk_hash.len() == 32,
-        "first OP_RETURN data is not a 32-byte vk hash"
-    );
-    let vk_hash: [u8; 32] = vk_hash.try_into().unwrap();
+        // ensure that the list at least contains the VK hash
+        // other elements in the list are presumed to contain public inputs
+        ensure!(data.len() >= 32, "OP_RETURN output is too small, it should at least contain the 32-byte hash of the verifier key");
 
-    let public_inputs = op_return_outputs[1..].to_vec();
+        // TODO: extract validate the vk hash against the given vk
+        let (vk_hash, state) = data.split_at(32);
+        println!("- first op_return is vk hash: {:?}", vk_hash);
+        let vk_hash: [u8; 32] = vk_hash.try_into().unwrap();
+
+        // parse state
+        let state = if state.is_empty() {
+            None
+        } else {
+            Some(circom_field_from_bytes(state)?)
+        };
+
+        (vk_hash, state)
+    };
 
     let smart_contract = SmartContract {
         locked_value,
         vk_hash,
-        public_inputs,
+        state,
         vout_of_zkbitcoin_utxo,
         prev_outs: raw_tx.output.clone(),
     };
@@ -853,65 +819,65 @@ mod tests {
 
     use super::*;
 
-    #[tokio::test]
-    async fn test_validate_bob_request() {
-        // read circuit example files
-        let circuit_files = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/circuit");
+    // #[tokio::test]
+    // async fn test_validate_bob_request() {
+    //     // read circuit example files
+    //     let circuit_files = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/circuit");
 
-        // get proof, vk, and inputs
-        let proof: plonk::Proof = {
-            let proof_path = circuit_files.join("proof.json");
-            let file = File::open(proof_path).expect("file not found");
-            serde_json::from_reader(file).expect("error while reading file")
-        };
-        let vk: plonk::VerifierKey = {
-            let vk_path = circuit_files.join("vk.json");
-            let file = File::open(vk_path).expect("file not found");
-            serde_json::from_reader(file).expect("error while reading file")
-        };
-        let public_inputs: plonk::PublicInputs = {
-            let proof_inputs_path = circuit_files.join("proof_inputs.json");
-            let file = File::open(proof_inputs_path).expect("file not found");
-            serde_json::from_reader(file).expect("error while reading file")
-        };
+    //     // get proof, vk, and inputs
+    //     let proof: plonk::Proof = {
+    //         let proof_path = circuit_files.join("proof.json");
+    //         let file = File::open(proof_path).expect("file not found");
+    //         serde_json::from_reader(file).expect("error while reading file")
+    //     };
+    //     let vk: plonk::VerifierKey = {
+    //         let vk_path = circuit_files.join("vk.json");
+    //         let file = File::open(vk_path).expect("file not found");
+    //         serde_json::from_reader(file).expect("error while reading file")
+    //     };
+    //     let public_inputs: plonk::PublicInputs = {
+    //         let proof_inputs_path = circuit_files.join("proof_inputs.json");
+    //         let file = File::open(proof_inputs_path).expect("file not found");
+    //         serde_json::from_reader(file).expect("error while reading file")
+    //     };
 
-        // truncate a portion (let's say 10) of the public inputs
-        assert_eq!(public_inputs.0.len(), 96);
-        let truncated_pi = public_inputs
-            .0
-            .iter()
-            .map(|x| x.as_bytes().to_vec())
-            .take(32)
-            .collect();
+    //     // truncate a portion (let's say 10) of the public inputs
+    //     assert_eq!(public_inputs.0.len(), 96);
+    //     let truncated_pi = public_inputs
+    //         .0
+    //         .iter()
+    //         .map(|x| x.as_bytes().to_vec())
+    //         .take(32)
+    //         .collect();
 
-        // create smart contract
-        let vk_hash = vk.hash();
-        let smart_contract = SmartContract {
-            locked_value: Amount::from_sat(10),
-            vk_hash,
-            public_inputs: truncated_pi,
-            vout_of_zkbitcoin_utxo: 0,
-            prev_outs: vec![],
-        };
+    //     // create smart contract
+    //     let vk_hash = vk.hash();
+    //     let smart_contract = SmartContract {
+    //         locked_value: Amount::from_sat(10),
+    //         vk_hash,
+    //         state: truncated_pi,
+    //         vout_of_zkbitcoin_utxo: 0,
+    //         prev_outs: vec![],
+    //     };
 
-        // create bob tx
-        let tx = todo!();
+    //     // create bob tx
+    //     let tx = todo!();
 
-        // create bob request
-        let bob_request = BobRequest {
-            tx,
-            zkapp_input: 0,
-            vk,
-            proof,
-            update: None,
-        };
+    //     // create bob request
+    //     let bob_request = BobRequest {
+    //         tx,
+    //         zkapp_input: 0,
+    //         vk,
+    //         proof,
+    //         update: None,
+    //     };
 
-        // try to validate the request
-        let ctx = RpcCtx::for_testing();
+    //     // try to validate the request
+    //     let ctx = RpcCtx::for_testing();
 
-        bob_request
-            .validate_request(&ctx, Some(smart_contract), tx.txid())
-            .await
-            .unwrap();
-    }
+    //     bob_request
+    //         .validate_request(&ctx, Some(smart_contract), tx.txid())
+    //         .await
+    //         .unwrap();
+    // }
 }

@@ -77,39 +77,39 @@ impl Proof {
 pub struct PublicInputs(pub Vec<String>);
 
 impl PublicInputs {
-    /// Warning: will panic if the public inputs is malformed.
-    pub fn new_state(&self, state_len: usize) -> Vec<String> {
-        self.0[0..state_len].to_vec()
+    /// Warning: might panic if the public inputs is malformed.
+    pub fn new_state(&self) -> String {
+        self.0[0].clone()
     }
 
-    /// Warning: will panic if the public inputs is malformed.
-    pub fn prev_state(&self, state_len: usize) -> Vec<String> {
-        self.0[state_len..state_len * 2].to_vec()
+    /// Warning: might panic if the public inputs is malformed.
+    pub fn prev_state(&self) -> String {
+        self.0[1].clone()
     }
 
-    /// Warning: will panic if the public inputs is malformed.
-    pub fn truncated_txid(&self, state_len: usize) -> String {
-        self.0[state_len * 2].clone()
+    /// Warning: might panic if the public inputs is malformed.
+    pub fn truncated_txid(&self) -> String {
+        self.0[2].clone()
     }
 
-    /// Warning: will panic if the public inputs is malformed.
-    pub fn amount_out(&self, state_len: usize) -> String {
-        self.0[state_len * 2 + 1].clone()
+    /// Warning: might panic if the public inputs is malformed.
+    pub fn amount_out(&self) -> String {
+        self.0[3].clone()
     }
 
-    /// Warning: will panic if the public inputs is malformed.
-    pub fn amount_in(&self, state_len: usize) -> String {
-        self.0[state_len * 2 + 2].clone()
+    /// Warning: might panic if the public inputs is malformed.
+    pub fn amount_in(&self) -> String {
+        self.0[4].clone()
     }
 
     /// Recover the [Update] responsible for the given the public inputs.
-    pub fn to_update(&self, state_len: usize) -> Update {
+    pub fn to_update(&self) -> Update {
         Update {
-            new_state: self.new_state(state_len),
-            prev_state: self.prev_state(state_len),
+            new_state: self.new_state(),
+            prev_state: self.prev_state(),
             truncated_txid: None, // doesn't get serialized
-            amount_out: self.amount_out(state_len),
-            amount_in: self.amount_in(state_len),
+            amount_out: self.amount_out(),
+            amount_in: self.amount_in(),
         }
     }
 
@@ -123,8 +123,8 @@ impl PublicInputs {
             update.prev_state.len() == state_len,
             "the size of the given previous state doesn't match the expected state length of {state_len}");
 
-        let mut public_inputs = update.new_state.clone();
-        public_inputs.extend(update.prev_state.clone());
+        let mut public_inputs = vec![update.new_state.clone()];
+        public_inputs.push(update.prev_state.clone());
         public_inputs.push(truncated_txid);
         public_inputs.push(update.amount_out.clone());
         public_inputs.push(update.amount_in.clone());

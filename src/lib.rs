@@ -60,3 +60,48 @@ pub fn truncate_txid(txid: bitcoin::Txid) -> String {
     let big = num_bigint::BigUint::from_bytes_be(&bytes);
     big.to_str_radix(10)
 }
+
+/// Creates a P2TR script from a public key.
+pub fn p2tr_script_to(zkbitcoin_pubkey: bitcoin::PublicKey) -> bitcoin::ScriptBuf {
+    let secp = secp256k1::Secp256k1::default();
+    let internal_key = bitcoin::key::UntweakedPublicKey::from(zkbitcoin_pubkey);
+    bitcoin::ScriptBuf::new_p2tr(&secp, internal_key, None)
+}
+
+pub fn circom_field_to_bytes(field: &str) -> anyhow::Result<Vec<u8>> {
+    let big = <num_bigint::BigUint as num_traits::Num>::from_str_radix(field, 10).unwrap();
+    // sanity check
+    let prime_p =
+        <num_bigint::BigUint as num_traits::Num>::from_str_radix(constants::CIRCOM_ETH_PRIME, 10)
+            .unwrap(); // TODO: cache that value
+    anyhow::ensure!(
+        prime_p > big,
+        "the field element given was bigger than the Circom prime"
+    );
+    Ok(big.to_bytes_be())
+}
+
+pub fn circom_field_from_bytes(bytes: &[u8]) -> anyhow::Result<String> {
+    let prime_p =
+        <num_bigint::BigUint as num_traits::Num>::from_str_radix(constants::CIRCOM_ETH_PRIME, 10)
+            .unwrap(); // TODO: cache that value
+    let big = num_bigint::BigUint::from_bytes_be(bytes);
+    anyhow::ensure!(
+        prime_p > big,
+        "the bytes given can't be deserialized as a Circom field element"
+    );
+    Ok(big.to_str_radix(10))
+}
+
+pub fn op_return_script_for(
+    vk_hash: &[u8; 32],
+    initial_state: Option<&String>,
+) -> anyhow::Result<bitcoin::ScriptBuf> {
+    let mut data = vk_hash.to_vec();
+    if let Some(initial_state) = initial_state {
+        data.extend(circom_field_to_bytes(&initial_state)?);
+        assert!(data.len() < 64);
+    }
+    let thing: &bitcoin::script::PushBytes = data.as_slice().try_into().unwrap();
+    Ok(bitcoin::ScriptBuf::new_op_return(&thing))
+}
