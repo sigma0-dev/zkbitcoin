@@ -26,6 +26,14 @@ pub const ORCHESTRATOR_ADDRESS: &str = "127.0.0.1:6666";
 pub const CIRCOM_ETH_PRIME: &str =
     "21888242871839275222246405745257275088548364400416034343698204186575808495617";
 
+/// The bit-length of the Circom prime.
 pub const CIRCOM_ETH_PRIME_BITLEN: usize = 254;
 
+/// The byte-length of the Circom prime.
 pub const CIRCOM_ETH_PRIME_BYTELEN: usize = 32;
+
+/// The expected number of public inputs for a stateless zkapp.
+pub const STATELESS_ZKAPP_PUBLIC_INPUT_LEN: usize = 1 /* truncated txid */;
+
+/// The expected number of public inputs for a stateful zkapp.
+pub const STATEFUL_ZKAPP_PUBLIC_INPUT_LEN: usize = 1 * 2 /* new state + prev state */ + 1 /* truncated txid */ + 1 /* amount_out */ + 1 /* amount_in */;

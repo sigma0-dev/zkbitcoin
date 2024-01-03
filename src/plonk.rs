@@ -114,15 +114,7 @@ impl PublicInputs {
     }
 
     /// Convert an [Update] into the public inputs that can be used by the verifier.
-    pub fn from_update(update: &Update, state_len: usize, truncated_txid: String) -> Result<Self> {
-        ensure!(
-            update.prev_state.len() == update.new_state.len(),
-            "the size of the given previous state and new state don't match"
-        );
-        ensure!(
-            update.prev_state.len() == state_len,
-            "the size of the given previous state doesn't match the expected state length of {state_len}");
-
+    pub fn from_update(update: &Update, truncated_txid: String) -> Result<Self> {
         let mut public_inputs = vec![update.new_state.clone()];
         public_inputs.push(update.prev_state.clone());
         public_inputs.push(truncated_txid);

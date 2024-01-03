@@ -10,7 +10,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     circom_field_from_bytes, circom_field_to_bytes,
-    constants::{FEE_ZKBITCOIN_SAT, MINIMUM_CONFIRMATIONS, ZKBITCOIN_FEE_PUBKEY, ZKBITCOIN_PUBKEY},
+    constants::{
+        FEE_ZKBITCOIN_SAT, MINIMUM_CONFIRMATIONS, STATEFUL_ZKAPP_PUBLIC_INPUT_LEN,
+        ZKBITCOIN_FEE_PUBKEY, ZKBITCOIN_PUBKEY,
+    },
     json_rpc_stuff::{
         createrawtransaction, fund_raw_transaction, json_rpc_request, TransactionOrHex,
     },
@@ -182,16 +185,18 @@ impl BobRequest {
                 )?;
                 let new_value = smart_contract.locked_value + amount_in - amount_out;
 
-                {
-                    let amount_in = amount_in.to_string_in(Denomination::Bitcoin);
-                    let new_value = new_value.to_string_in(Denomination::Bitcoin);
-                    let amount_out = amount_out.to_string_in(Denomination::Bitcoin);
-                    let locked = smart_contract
-                        .locked_value
-                        .to_string_in(Denomination::Bitcoin);
-                    println!("- stateful: Bob is attempting to deposit {amount_in} BTC, and withdraw {amount_out} BTC, from the zkapp's {locked} BTC");
-                    println!("- there will be {new_value} BTC locked in the zkapp after this transaction");
-                }
+                // convert to BTC as expected by API
+                let amount_in = amount_in.to_string_in(Denomination::Bitcoin);
+                let new_value = new_value.to_string_in(Denomination::Bitcoin);
+                let amount_out = amount_out.to_string_in(Denomination::Bitcoin);
+                let locked = smart_contract
+                    .locked_value
+                    .to_string_in(Denomination::Bitcoin);
+
+                println!("- stateful: Bob is attempting to deposit {amount_in} BTC, and withdraw {amount_out} BTC, from the zkapp's {locked} BTC");
+                println!(
+                    "- there will be {new_value} BTC locked in the zkapp after this transaction"
+                );
 
                 // the updated zkapp
                 let zkbitcoin_address = taproot_addr_from(ZKBITCOIN_PUBKEY)?;
@@ -231,8 +236,15 @@ impl BobRequest {
         };
 
         // create a proof with the correct txid this time
+        let truncated_txid = truncate_txid(tx.txid());
+        proof_inputs.insert("truncated_txid".to_string(), vec![truncated_txid]);
+
         let (proof, public_inputs, vk) =
             snarkjs::prove(&circom_circuit_path, &proof_inputs).await?;
+        println!(
+            "- public_inputs used to create the proof: {:?}",
+            public_inputs.0
+        );
 
         // sanity check
         ensure!(
@@ -269,7 +281,7 @@ impl BobRequest {
             update,
         };
 
-        println!("Bob's request: {:#?}", res);
+        //println!("Bob's request: {:#?}", res);
 
         Ok(res)
     }
@@ -292,26 +304,35 @@ impl BobRequest {
     /// Validate the unsigned transaction contained in Bob's request.
     /// It checks outputs, but not inputs.
     /// The caller will be in charge of retrieving the smart contract and verifying its execution.
-    fn validate_transaction(&self, smart_contract: &SmartContract) -> Result<()> {
+    fn validate_transaction(
+        tx: &Transaction,
+        smart_contract: &SmartContract,
+        update: Option<&Update>,
+    ) -> Result<()> {
         // TODO: we need to make sure that amount_out < smart_contract.locked_value
 
         // it must contain an output fee paid to zkBitcoinFund
-        self.tx
-            .output
+        let pay_to_zkbitcoin_fund_script =
+            p2tr_script_to(PublicKey::from_str(ZKBITCOIN_PUBKEY).unwrap());
+        println!(
+            "- pay_to_zkbitcoin_fund_script: {:?}",
+            pay_to_zkbitcoin_fund_script
+        );
+        tx.output
             .iter()
-            .find(|x| {
-                x.script_pubkey
-                    == p2tr_script_to(PublicKey::from_str(ZKBITCOIN_FEE_PUBKEY).unwrap())
-            })
+            .find(|x| x.script_pubkey == pay_to_zkbitcoin_fund_script)
             .context("the transaction does not contain an output fee paid to zkBitcoinFund")?;
 
-        if smart_contract.is_stateful() {
-            let update = self.update.as_ref().unwrap();
+        if let Some(update) = update {
+            // ensure we are updating because it's a stateful zkapp
+            ensure!(
+                smart_contract.is_stateful(),
+                "Bob sent an update but the zkapp used is stateless"
+            );
 
             // if the zkapp is stateful, it must also produce a new stateful zkapp as output
             let zkbitcoin_pubkey: PublicKey = PublicKey::from_str(ZKBITCOIN_PUBKEY).unwrap();
-            let new_zkapp = extract_smart_contract_from_tx(&self.tx, &zkbitcoin_pubkey)
-                .context("the transaction does not contain a new stateful zkapp as output")?;
+            let new_zkapp = extract_smart_contract_from_tx(tx, &zkbitcoin_pubkey)?;
 
             // it contains the same VK
             ensure!(
@@ -330,7 +351,11 @@ impl BobRequest {
 
             // ensure that it contains the correct locked value after withdrawl and funding
             let new_value = new_zkapp.locked_value;
-            let expected_value = smart_contract.updated_value(self)?;
+            let expected_value = {
+                let amount_out = Amount::from_str_in(&update.amount_out, Denomination::Satoshi)?;
+                let amount_in = Amount::from_str_in(&update.amount_in, Denomination::Satoshi)?;
+                smart_contract.locked_value + amount_in - amount_out
+            };
             ensure!(expected_value == new_value, "the updated zkapp does not contain the correct locked value after withdrawl and funding");
         }
 
@@ -353,7 +378,7 @@ impl BobRequest {
         };
 
         // validate the unsigned transaction
-        self.validate_transaction(&smart_contract)?;
+        Self::validate_transaction(&self.tx, &smart_contract, self.update.as_ref())?;
 
         // ensure that the hash of the VK correctly gives us the vk_hash
         ensure!(
@@ -375,25 +400,27 @@ impl BobRequest {
                 .context("an update was expected as the smart contract is stateful")?;
 
             // ensure that the smart contract expects the correct number of public inputs
-            let expected_len = 1 * 2 /* prev state + new state */ + 1 /* truncated hash of bob address */ + 1 /* amount */;
             ensure!(
-                self.vk.nPublic == expected_len,
-                "the smart contract is malformed"
+                self.vk.nPublic == STATEFUL_ZKAPP_PUBLIC_INPUT_LEN,
+                "the smart contract is malformed, we observed {nPublic} public inputs, but expected {STATEFUL_ZKAPP_PUBLIC_INPUT_LEN} for a stateful zkapp", nPublic=self.vk.nPublic
             );
 
             // ensure that the previous state used is correctly used
             ensure!(prev_state == &update.prev_state);
 
             //
-            PublicInputs::from_update(update, 1, truncated_txid)?.0
+            PublicInputs::from_update(update, truncated_txid)?.0
         } else {
             vec![truncated_txid]
         };
+        println!("- using public inputs: {public_inputs:?}");
 
-        // ensure that there's enough funds remaining to cover for bitcoin and zkBitcoin fee
+        // TODO: ensure that there's enough funds remaining to cover for bitcoin and zkBitcoin fee
+        // TODO: we need to make sure that new_locked = prev_locked + amount_in - amount_out and that amount_out < prev_locked + amount_in
         //smart_contract.check_remaining_funds(&self)?;
 
         // verify proof using snarkjs
+        println!("- attempting to verify proof");
         verify_proof(&self.vk, &public_inputs, &self.proof)?;
 
         //
@@ -448,18 +475,6 @@ pub struct SmartContract {
 }
 
 impl SmartContract {
-    fn updated_value(&self, request: &BobRequest) -> Result<Amount> {
-        ensure!(
-            self.is_stateful(),
-            "smart contract is stateless, so has no new value"
-        );
-        let update = request.update.as_ref().context("no update present")?;
-        let amount_out = Amount::from_str_in(&update.amount_out, Denomination::Satoshi)?;
-        let amount_in = Amount::from_str_in(&update.amount_in, Denomination::Satoshi)?;
-        let res = self.locked_value + amount_in - amount_out;
-        Ok(res)
-    }
-
     /// Returns true if the smart contract is stateless.
     fn is_stateless(&self) -> bool {
         // a stateless contract expects no public input
@@ -587,44 +602,29 @@ pub fn extract_smart_contract_from_tx(
 ) -> Result<SmartContract> {
     let zkbitcoin_pubkey = zkbitcoin_pubkey.to_owned();
 
-    // ensure that the first or second output is to 0xzkBitcoin and extract amount
+    // extract zkapp locked amount
     let expected_script = p2tr_script_to(zkbitcoin_pubkey);
-    let mut vout_of_zkbitcoin_utxo = 0;
-    let mut outputs = raw_tx.output.iter();
-    let locked_value = {
-        let output = outputs.next().context("tx has no output")?;
-        if output.script_pubkey != expected_script {
-            // the first output must have been the change, moving on to the second output
-            let output = outputs.next().context("tx has no output")?;
-            if output.script_pubkey != expected_script {
-                bail!("Transaction's first or second output must be for 0xzkBitcoin");
-            }
-            vout_of_zkbitcoin_utxo = 1;
-            output.value
-        } else {
-            output.value
-        }
-    };
+    let (vout, output) = raw_tx
+        .output
+        .iter()
+        .enumerate()
+        .find(|(_, x)| x.script_pubkey == expected_script)
+        .context("Transaction does not contain an output for 0xzkBitcoin")?;
+    let locked_value = output.value;
 
-    // we expect an OP_RETURN output containing both the vk and the state (if any)
+    // extract OP_RETURN data
     let (vk_hash, state) = {
-        // find the first OP_RETURN
-        let output = outputs
+        let output = raw_tx
+            .output
+            .iter()
             .find(|x| x.script_pubkey.is_op_return())
             .context("Transaction has no OP_RETURN")?;
-
-        // parse it
         let data = parse_op_return_data(&output.script_pubkey)?;
-        println!(
-            "- extracted {data:?} from OP_RETURN {:?}",
-            output.script_pubkey.as_script()
-        );
 
         // ensure that the list at least contains the VK hash
         // other elements in the list are presumed to contain public inputs
         ensure!(data.len() >= 32, "OP_RETURN output is too small, it should at least contain the 32-byte hash of the verifier key");
 
-        // TODO: extract validate the vk hash against the given vk
         let (vk_hash, state) = data.split_at(32);
         let vk_hash: [u8; 32] = vk_hash.try_into().unwrap();
 
@@ -643,7 +643,7 @@ pub fn extract_smart_contract_from_tx(
         locked_value,
         vk_hash,
         state,
-        vout_of_zkbitcoin_utxo,
+        vout_of_zkbitcoin_utxo: vout as u32,
         prev_outs: raw_tx.output.clone(),
     };
     Ok(smart_contract)
