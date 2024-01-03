@@ -273,9 +273,16 @@ impl BobRequest {
         };
 
         //
+        let zkapp_input = tx
+            .input
+            .iter()
+            .enumerate()
+            .find(|(_, x)| x.previous_output.txid == txid)
+            .context("internal error: the transaction does not contain the zkapp being used")?
+            .0;
         let res = Self {
             tx,
-            zkapp_input: 0,
+            zkapp_input,
             vk,
             proof,
             update,

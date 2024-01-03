@@ -8,6 +8,7 @@ use bitcoin::{
     Address, Amount, OutPoint, PublicKey, ScriptBuf, Sequence, TapSighashType, Transaction, TxIn,
     TxOut, Txid, Witness,
 };
+use itertools::Itertools;
 use secp256k1::{hashes::Hash, All, Secp256k1, XOnlyPublicKey};
 
 use crate::{
@@ -32,11 +33,6 @@ pub fn get_digest_to_hash(
     let mut cache = SighashCache::new(transaction);
     let mut sig_msg = Vec::new();
 
-    // TODO: only keep track of one prev_outs in the smart contract
-    //let thing = [smart_contract.prev_outs[smart_contract.vout_of_zkbitcoin_utxo as usize].clone()];
-    let thing = &smart_contract.prev_outs;
-    let prev_outs = Prevouts::All(thing);
-
     // input to sign is the one containing the zkapp
     let (input_idx, _) = transaction
         .input
@@ -48,6 +44,20 @@ pub fn get_digest_to_hash(
         })
         .context("could not find a zkapp being used in the given transaction")?;
 
+    // TODO: only keep track of one prev_outs in the smart contract
+    let thing = {
+        // hack: we use dummies for other inputs
+        let dummy_txout = TxOut {
+            value: Amount::from_sat(0),
+            script_pubkey: ScriptBuf::new(),
+        };
+        let mut thing = vec![dummy_txout; transaction.input.len()];
+        thing[input_idx] =
+            smart_contract.prev_outs[smart_contract.vout_of_zkbitcoin_utxo as usize].clone();
+        thing
+    };
+    let prev_outs = Prevouts::All(&thing);
+
     // get hash
     cache.taproot_encode_signing_data_to(
         &mut sig_msg,
@@ -57,7 +67,7 @@ pub fn get_digest_to_hash(
         None,
         hash_ty,
     )?;
-    let sighash = cache.taproot_signature_hash(0, &prev_outs, None, None, hash_ty)?;
+    let sighash = cache.taproot_signature_hash(input_idx, &prev_outs, None, None, hash_ty)?;
     Ok(sighash.to_byte_array())
 }
 
