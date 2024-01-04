@@ -49,19 +49,16 @@ pub struct Member {
 }
 
 pub struct Orchestrator {
-    pub bitcoin_rpc_ctx: RpcCtx,
     pub pubkey_package: frost_secp256k1_tr::keys::PublicKeyPackage,
     pub committee_cfg: CommitteeConfig,
 }
 
 impl Orchestrator {
     pub fn new(
-        bitcoin_rpc_ctx: RpcCtx,
         pubkey_package: frost_secp256k1_tr::keys::PublicKeyPackage,
         committee_cfg: CommitteeConfig,
     ) -> Self {
         Self {
-            bitcoin_rpc_ctx,
             pubkey_package,
             committee_cfg,
         }
@@ -69,13 +66,8 @@ impl Orchestrator {
 
     /// Handles bob request from A to Z.
     pub async fn handle_request(&self, bob_request: &BobRequest) -> Result<BobResponse> {
-        //
         // Validate transaction before forwarding it, and get smart contract
-        //
-
-        let smart_contract = bob_request
-            .validate_request(&self.bitcoin_rpc_ctx, None, bob_request.tx.txid())
-            .await?;
+        let smart_contract = bob_request.validate_request().await?;
 
         //
         // Round 1
@@ -295,7 +287,6 @@ async fn unlock_funds(
 
 pub async fn run_server(
     address: Option<&str>,
-    ctx: RpcCtx,
     pubkey_package: frost::PublicKeyPackage,
     committee_cfg: CommitteeConfig,
 ) -> Result<SocketAddr> {
@@ -303,7 +294,6 @@ pub async fn run_server(
     info!("- starting orchestrator at address http://{address}");
 
     let ctx = Orchestrator {
-        bitcoin_rpc_ctx: ctx,
         pubkey_package,
         committee_cfg,
     };

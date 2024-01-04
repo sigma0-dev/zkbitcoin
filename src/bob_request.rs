@@ -79,13 +79,20 @@ pub struct BobRequest {
     /// It might also contain a new zkapp as output, in case the input zkapp was stateful.
     pub tx: Transaction,
 
+    /// The transaction that deployed the zkapp.
+    /// Technically we could just pass a transaction ID, but this would require nodes to fetch the transaction from the blockchain.
+    /// Note that for this optimization to work, we need the full transaction,
+    /// as we need to deconstruct the txid of the input of `tx`.
+    pub zkapp_tx: Transaction,
+
     /// The index of the input that contains the zkapp being used.
+    // TODO: we should be able to infer this!
     pub zkapp_input: usize,
 
     /// The verifier key authenticated by the deployed transaction.
     pub vk: plonk::VerifierKey,
 
-    /// A proof.
+    /// A proof of execution.
     pub proof: plonk::Proof,
 
     /// In case of stateful zkapps, the update that can be converted as public inputs.
@@ -93,6 +100,7 @@ pub struct BobRequest {
 
     /// List of all the [TxOut] pointed out by the inputs.
     /// (This is needed to sign the transaction.)
+    /// We can trust this because if Bob sends us wrong data the signature we create simply won't verify.
     pub prev_outs: Vec<TxOut>,
 }
 
@@ -104,8 +112,18 @@ impl BobRequest {
         circom_circuit_path: &Path,
         mut proof_inputs: HashMap<String, Vec<String>>,
     ) -> Result<Self> {
+        // fetch transaction + metadata based on txid
+        debug!("- fetching txid {txid}");
+        let (_, zkapp_tx, confirmations) = get_transaction(rpc_ctx, txid).await?;
+
+        // enforce that the smart contract was confirmed
+        ensure!(
+            confirmations >= MINIMUM_CONFIRMATIONS,
+            "Smart contract has not been confirmed yet"
+        );
+
         // fetch smart contract we want to use
-        let smart_contract = fetch_smart_contract(rpc_ctx, txid).await?;
+        let smart_contract = extract_smart_contract_from_tx(&zkapp_tx)?;
         debug!("- smart contract being used: {smart_contract:?}",);
 
         // create a proof with a 0 txid
@@ -306,6 +324,7 @@ impl BobRequest {
         // create request
         let res = Self {
             tx,
+            zkapp_tx,
             zkapp_input,
             vk,
             proof,
@@ -363,8 +382,7 @@ impl BobRequest {
             );
 
             // if the zkapp is stateful, it must also produce a new stateful zkapp as output
-            let zkbitcoin_pubkey: PublicKey = PublicKey::from_str(ZKBITCOIN_PUBKEY).unwrap();
-            let new_zkapp = extract_smart_contract_from_tx(tx, &zkbitcoin_pubkey)?;
+            let new_zkapp = extract_smart_contract_from_tx(tx)?;
 
             // it contains the same VK
             ensure!(
@@ -396,18 +414,20 @@ impl BobRequest {
     }
 
     /// Validates a request received from Bob.
-    pub async fn validate_request(
-        &self,
-        ctx: &RpcCtx,
-        smart_contract: Option<SmartContract>,
-        bob_txid: Txid,
-    ) -> Result<SmartContract> {
-        // fetch the smart contract if not given
-        let smart_contract = if let Some(x) = smart_contract {
-            x
-        } else {
-            fetch_smart_contract(ctx, self.txid()?).await?
-        };
+    pub async fn validate_request(&self) -> Result<SmartContract> {
+        // extract smart contract from tx
+        let smart_contract = extract_smart_contract_from_tx(&self.zkapp_tx)?;
+
+        // ensure that the zkapp_tx given is the one being used
+        let zkapp_outpoint = self
+            .tx
+            .input
+            .get(self.zkapp_input)
+            .context("the request zkapp_input is incorrect")?;
+        ensure!(
+            smart_contract.txid == zkapp_outpoint.previous_output.txid,
+            "the zkapp_tx given is not the one being used"
+        );
 
         // validate the unsigned transaction
         Self::validate_transaction(&self.tx, &smart_contract, self.update.as_ref())?;
@@ -421,6 +441,7 @@ impl BobRequest {
         // TODO: do we need to check that vk.nPublic makes sense?
 
         // create truncated txid of Bob's transaction
+        let bob_txid = self.tx.txid();
         let truncated_txid = truncate_txid(bob_txid);
 
         // retrieve amount to be moved
@@ -625,13 +646,9 @@ pub fn parse_op_return_data(script: &bitcoin::ScriptBuf) -> Result<Vec<u8>> {
 }
 
 /// Extracts smart contract information as a [SmartContract] from a transaction.
-pub fn extract_smart_contract_from_tx(
-    raw_tx: &Transaction,
-    zkbitcoin_pubkey: &PublicKey,
-) -> Result<SmartContract> {
-    let zkbitcoin_pubkey = zkbitcoin_pubkey.to_owned();
-
+pub fn extract_smart_contract_from_tx(raw_tx: &Transaction) -> Result<SmartContract> {
     // extract zkapp locked amount
+    let zkbitcoin_pubkey: PublicKey = PublicKey::from_str(ZKBITCOIN_PUBKEY).unwrap();
     let expected_script = p2tr_script_to(zkbitcoin_pubkey);
     let (vout, output) = raw_tx
         .output
@@ -691,6 +708,5 @@ pub async fn fetch_smart_contract(ctx: &RpcCtx, txid: bitcoin::Txid) -> Result<S
     );
 
     // parse transaction
-    let zkbitcoin_pubkey: PublicKey = PublicKey::from_str(ZKBITCOIN_PUBKEY).unwrap();
-    extract_smart_contract_from_tx(&transaction, &zkbitcoin_pubkey)
+    extract_smart_contract_from_tx(&transaction)
 }

@@ -108,18 +108,6 @@ enum Commands {
 
     /// Starts an MPC node given a configuration
     StartCommitteeNode {
-        /// The wallet name of the RPC full node.
-        #[arg(env = "RPC_WALLET")]
-        rpc_wallet: Option<String>,
-
-        /// The `http(s)://address:port`` of the RPC full node.
-        #[arg(env = "RPC_ADDRESS")]
-        rpc_address: Option<String>,
-
-        /// The `user:password`` of the RPC full node.
-        #[arg(env = "RPC_AUTH")]
-        rpc_auth: Option<String>,
-
         /// The address to run the node on.
         #[arg(short, long)]
         address: Option<String>,
@@ -133,18 +121,6 @@ enum Commands {
 
     /// Starts an orchestrator
     StartOrchestrator {
-        /// The wallet name of the RPC full node.
-        #[arg(env = "RPC_WALLET")]
-        rpc_wallet: Option<String>,
-
-        /// The `http(s)://address:port` of the RPC full node.
-        #[arg(env = "RPC_ADDRESS")]
-        rpc_address: Option<String>,
-
-        /// The `user:password` of the RPC full node.
-        #[arg(env = "RPC_AUTH")]
-        rpc_auth: Option<String>,
-
         #[arg(short, long)]
         publickey_package_path: String,
 
@@ -381,20 +357,10 @@ async fn main() -> Result<()> {
         }
 
         Commands::StartCommitteeNode {
-            rpc_wallet,
-            rpc_address,
-            rpc_auth,
             address,
             key_path,
             publickey_package_path,
         } => {
-            let ctx = RpcCtx::new(
-                Some(BITCOIN_JSON_RPC_VERSION),
-                rpc_wallet.clone(),
-                rpc_address.clone(),
-                rpc_auth.clone(),
-            );
-
             let key_package = {
                 let full_path = PathBuf::from(key_path);
                 let file = std::fs::File::open(full_path).expect("file not found");
@@ -411,30 +377,15 @@ async fn main() -> Result<()> {
                 publickey_package
             };
 
-            zkbitcoin::committee::node::run_server(
-                address.as_deref(),
-                ctx,
-                key_package,
-                pubkey_package,
-            )
-            .await
-            .unwrap();
+            zkbitcoin::committee::node::run_server(address.as_deref(), key_package, pubkey_package)
+                .await
+                .unwrap();
         }
 
         Commands::StartOrchestrator {
-            rpc_wallet,
-            rpc_address,
-            rpc_auth,
             publickey_package_path,
             committee_cfg_path,
         } => {
-            let ctx = RpcCtx::new(
-                Some(BITCOIN_JSON_RPC_VERSION),
-                rpc_wallet.clone(),
-                rpc_address.clone(),
-                rpc_auth.clone(),
-            );
-
             let pubkey_package = {
                 let full_path = PathBuf::from(publickey_package_path);
                 let file = std::fs::File::open(full_path).expect("file not found");
@@ -456,7 +407,6 @@ async fn main() -> Result<()> {
 
             zkbitcoin::committee::orchestrator::run_server(
                 Some(ORCHESTRATOR_ADDRESS),
-                ctx,
                 pubkey_package,
                 committee_cfg,
             )

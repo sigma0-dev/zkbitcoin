@@ -99,13 +99,13 @@ cargo run --bin cli -- generate-committee --num 3 --threshold 2 --output-dir tes
 ### Start a committee node 
 
 ```shell
-RPC_WALLET="mywallet" RPC_ADDRESS="http://146.190.33.39:18331" RPC_AUTH="root:hellohello" cargo run -- start-committee-node --key-path examples/committee/key-0.json --publickey-package-path examples/committee/publickey-package.json --address "127.0.0.1:8891"
+RUST_LOG=debug cargo run -- start-committee-node --key-path examples/committee/key-0.json --publickey-package-path examples/committee/publickey-package.json --address "127.0.0.1:8891"
 ```
 
 ### Start an orchestrator/coordinator?
 
 ```shell
-RPC_WALLET="mywallet" RPC_ADDRESS="http://146.190.33.39:18331" RPC_AUTH="root:hellohello" cargo run  -- start-orchestrator --threshold 2 --publickey-package-path examples/committee/publickey-package.json --committee-cfg-path examples/committee/committee-cfg.json
+RUST_LOG=debug cargo run  -- start-orchestrator --threshold 2 --publickey-package-path examples/committee/publickey-package.json --committee-cfg-path examples/committee/committee-cfg.json
 ```
 
 then you can query it like so:

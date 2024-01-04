@@ -19,7 +19,6 @@ use serde::{Deserialize, Serialize};
 use crate::{
     bob_request::{BobRequest, SmartContract},
     frost,
-    json_rpc_stuff::RpcCtx,
     mpc_sign_tx::get_digest_to_hash,
 };
 
@@ -29,9 +28,6 @@ use crate::{
 
 /// State of a node.
 pub struct NodeState {
-    /// Data needed to communicate to their bitcoin node.
-    pub bitcoin_rpc_ctx: RpcCtx,
-
     /// The secret key stuff they need.
     pub key_package: frost::KeyPackage,
 
@@ -84,41 +80,15 @@ async fn round_1_signing(
             Some(format!("{e}")),
         )
     })?;
-    let smart_contract = {
-        let mut signing_tasks = context.signing_tasks.write().unwrap();
-        if let Some(local_signing_task) = signing_tasks.get(&txid) {
-            if local_signing_task.proof_hash == bob_request.proof.hash() {
-                // we've already validated this proof and started round 1,
-                // just return the cached commitments
-                return RpcResult::Ok(Round1Response {
-                    commitments: (&local_signing_task.nonces).into(),
-                });
-            } else {
-                // this is a new proof, so delete it and allow bob to replace his previous proof
-                // TODO: is this sane?
-                let smart_contract = signing_tasks.remove(&txid).unwrap().smart_contract;
-                Some(smart_contract)
-            }
-        } else {
-            None
-        }
-    };
 
     // validate request
-    let bob_txid = bob_request.tx.txid();
-    let smart_contract = match bob_request
-        .validate_request(&context.bitcoin_rpc_ctx, smart_contract, bob_txid)
-        .await
-    {
-        Ok(x) => x,
-        Err(err) => {
-            return RpcResult::Err(ErrorObjectOwned::owned(
-                jsonrpsee_types::error::UNKNOWN_ERROR_CODE,
-                "the request didn't validate",
-                Some(format!("{err}")),
-            ))
-        }
-    };
+    let smart_contract = bob_request.validate_request().await.map_err(|err| {
+        ErrorObjectOwned::owned(
+            jsonrpsee_types::error::UNKNOWN_ERROR_CODE,
+            "the request didn't validate",
+            Some(format!("{err}")),
+        )
+    })?;
 
     // round 1 of FROST
     let rng = &mut thread_rng();
@@ -247,7 +217,6 @@ async fn round_2_signing(
 
 pub async fn run_server(
     address: Option<&str>,
-    ctx: RpcCtx,
     key_package: frost::KeyPackage,
     pubkey_package: frost::PublicKeyPackage,
 ) -> anyhow::Result<SocketAddr> {
@@ -258,7 +227,6 @@ pub async fn run_server(
     );
 
     let ctx = NodeState {
-        bitcoin_rpc_ctx: ctx,
         key_package,
         pubkey_package,
         signing_tasks: RwLock::new(HashMap::new()),
