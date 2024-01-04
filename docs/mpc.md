@@ -4,17 +4,8 @@
 
 * Alice, she locks fund in a "smart contract"
 * Bob, he unlocks fund from the smart contract
-* MPC members, a committee of N members, of which T < N needs to be online to unlock the funds by signing a transaction collaboratively (using [FROST]())
+* MPC members, a committee of N members, of which T < N needs to be online to unlock the funds by signing a transaction collaboratively (using [FROST](https://eprint.iacr.org/2020/852))
 * Orchestrator, an endpoint that Bob can query to unlock the funds, the orchestrator literally "orchestrates" the signature by talking to the MPC members (MPC members don't talk to one another).
-
-## Modification to the MPC to work with Bitcoin's taproot format
-
-* `P` is our public key
-* but the pubkey that's actually used:
-* `Q = P + H(P || commit_data) * G`
-* so the private key to use is:
-* `sk + H(P || commit_data)`
-* since this is an addition, it should work locally when every
 
 ## Flow
 
@@ -24,42 +15,39 @@ The current proposed flow is the following:
 
 ```rust
 pub struct BobRequest {
-    /// The transaction ID that deployed the smart contract.
-    pub txid: bitcoin::Txid,
+    /// The transaction authenticated by the proof, and that Bob wants to sign.
+    /// This transaction should contain the zkapp as input, and a fee as output.
+    /// It might also contain a new zkapp as output, in case the input zkapp was stateful.
+    pub tx: Transaction,
+
+    /// The transaction that deployed the zkapp.
+    /// Technically we could just pass a transaction ID, but this would require nodes to fetch the transaction from the blockchain.
+    /// Note that for this optimization to work, we need the full transaction,
+    /// as we need to deconstruct the txid of the input of `tx`.
+    pub zkapp_tx: Transaction,
+
+    /// The index of the input that contains the zkapp being used.
+    // TODO: we should be able to infer this!
+    pub zkapp_input: usize,
 
     /// The verifier key authenticated by the deployed transaction.
     pub vk: plonk::VerifierKey,
 
-    /// A proof.
+    /// A proof of execution.
     pub proof: plonk::Proof,
 
-    /// All public inputs used in the proof (if any).
-    pub public_inputs: Vec<String>,
-}
+    /// In case of stateful zkapps, the update that can be converted as public inputs.
+    pub update: Option<Update>,
+
+    /// List of all the [TxOut] pointed out by the inputs.
+    /// (This is needed to sign the transaction.)
+    /// We can trust this because if Bob sends us wrong data the signature we create simply won't verify.
+    pub prev_outs: Vec<TxOut>,
 ```
 
 - The orchestrator validates the request and aborts if the request is not valid (proof does not verify, or txid has been spent, etc.)
-- If the request is valid, the orchestrator creates a signing task:
-
-```rust
-pub struct SigningTask {
-    /// The message to sign.
-    message: Vec<u8>,
-
-    /// The commitments collected during round 1.
-    commitments: BTreeMap<frost_secp256k1_tr::Identifier, frost_secp256k1_tr::round1::SigningCommitments>,
-
-    /// The signing package formed at the end of round 1.
-    signing_package: Option<frost_secp256k1_tr::SigningPackage>,
-
-    /// The signature shares at the end of round 2.
-    signature_shares:
-        BTreeMap<frost_secp256k1_tr::Identifier, frost_secp256k1_tr::round2::SignatureShare>,
-}
-```
-
-- The orchestrator then hits the `/verify_proof` endpoint of each MPC member (or a threshold of it)
-- A member that receives such a request verifies the request in a similar way, then starts a `LocalSigningTask` with a message set to the transaction to sign (which they can create deterministically, so that everyone has the same)
+- The orchestrator then hits the `/round_1_signing` endpoint of each MPC member (or a threshold of it) forwarding Bob's request as is.
+- A member that receives such a request verifies the request as well, then starts a `LocalSigningTask` with a message set to the transaction to sign (which they can create deterministically, so that everyone has the same)
 
 ```rust
 pub struct LocalSigningTask {
@@ -67,19 +55,27 @@ pub struct LocalSigningTask {
     pub proof_hash: [u8; 32],
     /// The smart contract that locked the value.
     pub smart_contract: SmartContract,
-    /// The commitments we produced to start the signature (round 1).
-    pub commitments: frost_secp256k1_tr::round1::SigningCommitments,
+    /// transaction to sign.
+    pub tx: Transaction,
+    /// The previous outputs that are being spent by the transaction (needed to sign).
+    pub prev_outs: Vec<TxOut>,
     /// The nonces behind these commitments
-    pub nonces: frost_secp256k1_tr::round1::SigningNonces,
+    pub nonces: round1::SigningNonces,
+    // TODO: should we keep track of commitments here also to double check?
 }
 ```
 
-The commitments created at this point are sent back to the orchestrator.
 Members keep track of such signing tasks in a local hashmap:
 
 ```rust
-pub struct LocalSigningTasks {
-    tasks: HashMap<Txid, LocalSigningTask>,
+signing_tasks: RwLock<HashMap<Txid, LocalSigningTask>>
+```
+
+The commitments created at this point are sent back to the orchestrator:
+
+```rust
+pub struct Round1Response {
+    pub commitments: frost_secp256k1_tr::round1::SigningCommitments,
 }
 ```
 
@@ -89,7 +85,30 @@ They also do not need to keep track of what round they are in. The existe of a L
 
 > TODO: are there any issues with not keeping track of nonces and stuff for the same message? Similar attacks to nonce-reuse?
 
-- The orchestrator continues until they collect a threshold of `SigningCommitments`, which they can convert into a `SigningPackage`. They will then send the `SigningCommitments` to all the participants in that signature by hitting their `/round2_sign` endpoint.
+- The orchestrator continues until they collect a threshold of `SigningCommitments`, which they can convert into a `SigningPackage`. They will then send the `SigningCommitments` to all the participants in that signature by hitting their `/round_2_signing` endpoint.
+
+```rust
+pub struct Round2Request {
+    /// The txid that we're referring to.
+    pub txid: Txid,
+
+    /// Hash of the proof. Useful to make sure that we're signing the request/proof.
+    pub proof_hash: [u8; 32],
+
+    /// The FROST data needed by the MPC participants in the second round.
+    pub commitments_map:
+        BTreeMap<frost_secp256k1_tr::Identifier, frost_secp256k1_tr::round1::SigningCommitments>,
+
+    /// Digest to hash.
+    /// While not necessary as nodes will recompute it themselves, it is good to double check that everyone is on the same page.
+    pub message: [u8; 32],
+}
+
+pub struct Round2Response {
+    pub signature_share: frost_secp256k1_tr::round2::SignatureShare,
+}
+```
+
 - A member that receives such a request can recreate the `SigningPackage`, and perform the second round of the signature protocol, delete their `LocalSigningTask` and respond to the orchestrator with their signature share.
 - The orchestrator will collect a threshold of signature shares, and will then send the aggregated signature back to Bob.
 
