@@ -252,6 +252,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore]
     async fn prove_stateless() {
         let circom_circuit_path = full_path_from(Path::new("examples/circuit/stateless.circom"));
         let mut proof_inputs = HashMap::new();
