@@ -42,11 +42,215 @@ In this section we survey zero-knowledge projects related to Bitcoin.
 
 [Chainway](https://chainway.xyz/) is another "zk rollup" which settles on Bitcoin. There is currently little information about the project so it is not clear who verifies proofs and how funds go in and out of the layer 2.
 
+TODO: https://github.com/boltlabs-inc/zeekoe
+
+TODO: https://iohk.io/en/research/library/papers/zendoo-a-zk-snark-verifiable-cross-chain-transfer-protocol-enabling-decoupled-and-decentralized-sidechains/
+
+TODO: block stream also? (https://blog.blockstream.com/bulletproofs-a-step-towards-fully-anonymous-transactions-with-multiple-asset-types/)
+
 ## 3. Overview
+
+The zkBitcoin protocol works with the assumption that there exists a committee of participants that are willing to verify zero-knowledge proofs for users. This committee controls a Bitcoin address, that we'll call `0xzkBitcoin`, using a threshold signature scheme. This way, no member of the committee knows the private key of the wallet, and UTXOs can only be spent with the agreement of a threshold of committee members.
+
+We support two types of zero-knowledge applications (zkapps): _stateless_ and _stateful_ zkapps. Let's first explain how stateless zkapps work.
+
+Stateless zkapps are simply an augmentation of the Bitcoin scripting language, that allows a user to lock funds using a zero-knowledge circuit instead of a Bitcoin script. A user can _deploy_ such a stateless zkapp by sending a transaction to the Bitcoin network containing a UTXO spendable by `0xzkBitcoin`. In addition, the transaction must also have an unspendable UTXO containing the hash of the verifier key associated to the zero-knowledge proof circuit.
+
+The transaction ID of this transaction represents the stateless zkapp. To unlock funds from this zkapp/UTXO, another user can provide the committee with a transaction that spends the UTXO. If the request is accompanied with a valid zero-knowledge proof that the user could execute the circuit authenticated by the unspendable UTXO, the committee will perform a multi-party computation to sign the transaction and return it to the user. The user can then broadcast the transaction to the Bitcoin network and unlock the funds.
+
+It is important to note that the committee members did not need access to the Bitcoin blockchain to perform their duty: they simply had to verify that the UTXO being spent was part of a transaction matching the previous description of a deployment transaction.
+
+Stateful zkapps are similar, except that the second UTXO containing a hash of the verifier key also contains the state of the zkapp. For the deploy transaction, this means that the second UTXO must also contain the initial state.
+
+Users who want to use a stateful zkapp must create a transaction that spends the zkapp and produce a new zkapp as a new UTXO to `0xzkBitcoin` and a UTXO of the hashed verifier key and new state. The funds locked in the updated zkapp must match the following formula: 
+
+$$b_{\text{new}} = b_{\text{old}} + b_{\text{amount_in}} - b_{\text{amount_out}}$$
+
+In other words, the new balance is the old balance plus anything that was deposited and minus anything that was withdrawn.
+
+For the previously discussed mechanisms to work, a stateful zkapp must be linked to a zero-knowledge circuit that takes 4 public inputs in this order: the new state, the previous state, the amount out and the amount in.
+
+In addition, to ensure that a proof is strongly tied to a specific transaction, one additional public input is added to both stateless and stateful zero-knowledge circuits: the transaction ID spending the zkapp.
+
+In the next section we give a more detailed specification of the protocol.
 
 ## 4. Protocol
 
-TODO: Copy zkapp doc from docs/
+We want to offer two functionnalities:
+
+* **Stateless zkapps**: lock some funds and whoever can create a proof can spend _all_ the funds.
+* **Stateful zkapps**: initialize some authenticated state on-chain and update it by providing a proof.
+
+Let's see how both system works:
+
+## Stateless zkapps
+
+A stateless zkapp can be deployed by anyone (e.g. Alice) with a transaction to `0xzkBitcoin` that contains only one data field: 
+
+1. Then digest of a verifier key.
+
+In more detail, the transaction should look like this:
+
+```rust
+Transaction {
+   version: Version::TWO,
+   lock_time: absolute::LockTime::ZERO,
+   input: vec![/* alice's funding */],
+   output: vec![
+      // one of the outputs is the stateless zkapp
+      TxOut {
+         value: /* amount locked */,
+         script_pubkey: /* p2tr script to zkBitcoin pubkey */,
+      },
+      // the first OP_RETURN output is the vk hash
+      TxOut {
+         value: /* dust value */,
+         script_pubkey: /* OP_RETURN of VK hash */,
+      },
+      // any other outputs...
+   ],
+}
+```
+
+In order to spend such a transaction, someone (e.g. Bob) needs to produce:
+
+1. The verifier key that hashes to that digest.
+2. An unsigned transaction that consumes a stateless zkapp (as input), and produces a fee to the zkBitcoin fund (as output). All other inputs and outputs are free.
+3. A proof that verifies with a single public input: a truncated transaction (so that the proof authenticates that specific transaction).
+
+To reiterate, the public input is structured as follows:
+
+```python
+PI = [truncated_tixd]
+```
+
+When observing such a _valid_ request, the MPC committee will sign the zkapp input and return it to Bob.
+
+In more detail, the following transaction is produced by Bob and sent to the MPC committee:
+
+```rust
+Transaction {
+   version: Version::TWO,
+   lock_time: absolute::LockTime::ZERO,
+   input: vec![
+      // one of the inputs contains the stateless zkapp
+      TxIn {
+         previous_output: OutPoint {
+               txid: /* the zkapp txid */,
+               vout: /* the output id of the zkapp */,
+         },
+         script_sig: /* p2tr script to zkBitcoin */,
+         sequence: Sequence::MAX,
+         witness: Witness::new(),
+      }
+      // any other inputs...
+   ],
+   output: vec![
+      // one of the outputs contains a fee to zkBitcoinFund
+      TxOut {
+         value: /* ZKBITCOIN_FEE */,
+         script_pubkey: /* locked for zkBitcoinFund */,
+      }
+      // any other outputs...
+   ],
+}
+```
+
+## Stateful zkapps
+
+A statefull zkapp can be deployed with a transaction to `0xzkBitcoin` that contains two data field: 
+
+1. The digest of a verifier key.
+2. 1 field element that represent the initial state of the zkapp. (If there's none the zkapp is treated as a stateless zkapp.)
+
+> Note: we are limited to 1 field element as Bitcoin nodes don't forward transactions with more than one `OP_RETURN` output. An `OP_RETURN` seems to be limited to pushing 80 bytes of data, as such we are quite limited here.
+
+In more detail, the transaction should look like this:
+
+```rust
+Transaction {
+   version: Version::TWO,
+   lock_time: absolute::LockTime::ZERO,
+   input: vec![/* alice's funding */],
+   output: vec![
+      // one of the outputs contain the stateful zkapp
+      TxOut {
+         value: /* amount locked */,
+         script_pubkey: /* p2tr script to zkBitcoin */,
+      },
+      // an OP_RETURN output containing the vk hash concatenated with the state
+      TxOut {
+         value: /* dust value */,
+         script_pubkey: /* OP_RETURN of VK hash and new state */,
+      },
+      // arbitrary spendable outputs are also allowed...
+   ],
+}
+```
+
+In order to spend such a transaction Bob needs to produce:
+
+1. The verifier key that hashes to that digest.
+2. An unsigned transaction that consumes a stateful zkapp (as input), and produces a fee to the zkBitcoin fund as well as a new stateful zkapp (as outputs). All other inputs and outputs are free.
+3. A number of public inputs in this order:
+   1. The previous state as 1 field element.
+   2. The new state as 1 field element.
+   3. A truncated SHA-256 hash of the transaction id (authenticating the transaction).
+   4. An amount `amount_out` to withdraw.
+   5. An amount `amount_in`to deposit.
+4. A proof that verifies for the verifier key and the previous public inputs.
+
+To reiterate, the public input is structured as follows:
+
+```python
+PI = [new_state | prev_state | truncated_txid | amount_out | amount_in ]
+```
+
+> Note: we place `new_state` first, because outputs in Circom are placed first (see [this tweet](https://twitter.com/tjade273/status/1732067115190956085)).
+
+Because Bob's transaction will contain the new state, Bob needs to run a proof with `truncated_txid=0` first in order to obtain the new state, then run it again with the `txid` obtained. For this reason, **it is important that the output of the circuit is not impacted by the value of `truncated_tixd`**.
+
+When receiving such a _valid_ request (e.g. proof verifies), the MPC committee signs the zkapp input of the transaction and returns it to Bob.
+
+In more detail:
+
+```rust
+Transaction {
+   version: Version::TWO,
+   lock_time: absolute::LockTime::ZERO,
+   input: vec![
+      // one of the inputs contains the stateful zkapp
+      TxIn {
+         previous_output: OutPoint {
+               txid: /* the zkapp txid */,
+               vout: /* the output id of the zkapp */,
+         },
+         script_sig: ScriptBuf::new(),
+         sequence: Sequence::MAX,
+         witness: Witness::new(),
+      }
+      // other inputs are allowed...
+   ],
+   output: vec![
+      // one of the outputs is a fee to the zkBitcoin fund
+      TxOut {
+         value: /* ZKBITCOIN_FEE */,
+         script_pubkey: /* locked for zkBitcoinFund */,
+      }
+      // one of the outputs contain the new stateful zkapp
+      TxOut {
+         value: /* the zkapp value updated to reflect amount_out and amount_in */,
+         script_pubkey: /* locked for zkBitcoin */,
+      },
+      // an OP_RETURN output containing the vk hash as well as the new state
+      TxOut {
+         value: /* dust value */,
+         script_pubkey: /* OP_RETURN of VK hash and new state */,
+      },
+      // arbitrary spendable outputs are also allowed...
+   ],
+}
+```
 
 ## 5. Security
 
