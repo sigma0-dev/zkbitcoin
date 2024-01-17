@@ -76,20 +76,22 @@ In addition, to ensure that a proof is strongly tied to a specific transaction, 
 
 In the next section we give a more detailed specification of the protocol.
 
-## 4. Protocol
+## 4. The zkBitcoin Protocol
 
-We want to offer two functionnalities:
+In this section we fully review how the protocol works from the point of view of users, from the point of view of the service and the committee members. In addition, we also explain how to modify the [FROST]() threshold signature scheme in order to support Bitcoin taproot's schnorr signatures.
+
+To recap, zkBitcoin offers two functionnalities:
 
 * **Stateless zkapps**: lock some funds and whoever can create a proof can spend _all_ the funds.
 * **Stateful zkapps**: initialize some authenticated state on-chain and update it by providing a proof.
 
-Let's see how both system works:
+In the next two subsection, we see how both system works.
 
-## Stateless zkapps
+### Stateless zkapps
 
 A stateless zkapp can be deployed by anyone (e.g. Alice) with a transaction to `0xzkBitcoin` that contains only one data field: 
 
-1. Then digest of a verifier key.
+1. The digest of a verifier key.
 
 In more detail, the transaction should look like this:
 
@@ -158,9 +160,9 @@ Transaction {
 }
 ```
 
-## Stateful zkapps
+### Stateful zkapps
 
-A statefull zkapp can be deployed with a transaction to `0xzkBitcoin` that contains two data field: 
+A statefull zkapp can be deployed with a transaction to `0xzkBitcoin` that contains the following data: 
 
 1. The digest of a verifier key.
 2. 1 field element that represent the initial state of the zkapp. (If there's none the zkapp is treated as a stateless zkapp.)
@@ -192,11 +194,11 @@ Transaction {
 
 In order to spend such a transaction Bob needs to produce:
 
-1. The verifier key that hashes to that digest.
+1. The verifier key that hashes to the digest of the verifier key.
 2. An unsigned transaction that consumes a stateful zkapp (as input), and produces a fee to the zkBitcoin fund as well as a new stateful zkapp (as outputs). All other inputs and outputs are free.
 3. A number of public inputs in this order:
-   1. The previous state as 1 field element.
-   2. The new state as 1 field element.
+   1. The new state as 1 field element.
+   2. The previous state as 1 field element.
    3. A truncated SHA-256 hash of the transaction id (authenticating the transaction).
    4. An amount `amount_out` to withdraw.
    5. An amount `amount_in`to deposit.
@@ -254,18 +256,205 @@ Transaction {
 }
 ```
 
-## 5. Security
+### MPC orchestrator
+
+Characters:
+
+* Alice, she locks fund in a "smart contract"
+* Bob, he unlocks fund from the smart contract
+* MPC members, a committee of N members, of which T < N needs to be online to unlock the funds by signing a transaction collaboratively (using [FROST](https://eprint.iacr.org/2020/852))
+* Orchestrator, an endpoint that Bob can query to unlock the funds, the orchestrator literally "orchestrates" the signature by talking to the MPC members (MPC members don't talk to one another).
+
+Flow:
+
+The current proposed flow is the following:
+
+- Bob sends a request to an orchestrator:
+
+```rust
+pub struct BobRequest {
+    /// The transaction authenticated by the proof, and that Bob wants to sign.
+    /// This transaction should contain the zkapp as input, and a fee as output.
+    /// It might also contain a new zkapp as output, in case the input zkapp was stateful.
+    pub tx: Transaction,
+
+    /// The transaction that deployed the zkapp.
+    /// Technically we could just pass a transaction ID, but this would require nodes to fetch the transaction from the blockchain.
+    /// Note that for this optimization to work, we need the full transaction,
+    /// as we need to deconstruct the txid of the input of `tx`.
+    pub zkapp_tx: Transaction,
+
+    /// The index of the input that contains the zkapp being used.
+    // TODO: we should be able to infer this!
+    pub zkapp_input: usize,
+
+    /// The verifier key authenticated by the deployed transaction.
+    pub vk: plonk::VerifierKey,
+
+    /// A proof of execution.
+    pub proof: plonk::Proof,
+
+    /// In case of stateful zkapps, the update that can be converted as public inputs.
+    pub update: Option<Update>,
+
+    /// List of all the [TxOut] pointed out by the inputs.
+    /// (This is needed to sign the transaction.)
+    /// We can trust this because if Bob sends us wrong data the signature we create simply won't verify.
+    pub prev_outs: Vec<TxOut>,
+```
+
+- The orchestrator validates the request and aborts if the request is not valid (proof does not verify, or txid has been spent, etc.)
+- The orchestrator then hits the `/round_1_signing` endpoint of each MPC member (or a threshold of it) forwarding Bob's request as is.
+- A member that receives such a request verifies the request as well, then starts a `LocalSigningTask` with a message set to the transaction to sign (which they can create deterministically, so that everyone has the same)
+
+```rust
+pub struct LocalSigningTask {
+    /// So we know if we're processing the same request twice.
+    pub proof_hash: [u8; 32],
+    /// The smart contract that locked the value.
+    pub smart_contract: SmartContract,
+    /// transaction to sign.
+    pub tx: Transaction,
+    /// The previous outputs that are being spent by the transaction (needed to sign).
+    pub prev_outs: Vec<TxOut>,
+    /// The nonces behind these commitments
+    pub nonces: round1::SigningNonces,
+    // TODO: should we keep track of commitments here also to double check?
+}
+```
+
+Members keep track of such signing tasks in a local hashmap:
+
+```rust
+signing_tasks: RwLock<HashMap<Txid, LocalSigningTask>>
+```
+
+The commitments created at this point are sent back to the orchestrator:
+
+```rust
+pub struct Round1Response {
+    pub commitments: frost_secp256k1_tr::round1::SigningCommitments,
+}
+```
+
+Note that a committee member doesn't necessarily care about seeing different local tasks for the same `txid`. They'll just keep track of the last one. If they see a new request for the same txid incoming, they will ignore it if the request's proof matches, or go through the flow again if its a new proof (keeping track of the last proof they've seen).
+
+They also do not need to keep track of what round they are in. The existe of a LocalSigningTask means that there has been a proof that was verified, and that a transaction is being signed. If the `commitments` vector is not empty, then the first round has been completed. (But since the `LocalSigningTask` still exists the second round hasn't been completed, otherwise the member would have pruned it.)
+
+> TODO: are there any issues with not keeping track of nonces and stuff for the same message? Similar attacks to nonce-reuse?
+
+- The orchestrator continues until they collect a threshold of `SigningCommitments`, which they can convert into a `SigningPackage`. They will then send the `SigningCommitments` to all the participants in that signature by hitting their `/round_2_signing` endpoint.
+
+```rust
+pub struct Round2Request {
+    /// The txid that we're referring to.
+    pub txid: Txid,
+
+    /// Hash of the proof. Useful to make sure that we're signing the request/proof.
+    pub proof_hash: [u8; 32],
+
+    /// The FROST data needed by the MPC participants in the second round.
+    pub commitments_map:
+        BTreeMap<frost_secp256k1_tr::Identifier, frost_secp256k1_tr::round1::SigningCommitments>,
+
+    /// Digest to hash.
+    /// While not necessary as nodes will recompute it themselves, it is good to double check that everyone is on the same page.
+    pub message: [u8; 32],
+}
+
+pub struct Round2Response {
+    pub signature_share: frost_secp256k1_tr::round2::SignatureShare,
+}
+```
+
+- A member that receives such a request can recreate the `SigningPackage`, and perform the second round of the signature protocol, delete their `LocalSigningTask` and respond to the orchestrator with their signature share.
+- The orchestrator will collect a threshold of signature shares, and will then send the aggregated signature back to Bob.
+
+> TODO: what to do if the orchestrator gets time outs from their request? Or can't meet a threshold?
+  
+> TODO: what happens if the orchestrator crash at some point? Restart the protocol right?
+
+### Making Bitcoin compatible with taproot
+
+FROST is not compatible with Bitcoin Schnorr's standard (BIP 340 and BIP 341) because of two additions in the Bitcoin scheme: elliptic curve points lose information (they only carry the x coordinate) and public keys can be tweaked (this is due to the taproot design).
+
+Some recap and notation:
+
+* the keypair is $(s, Y)$ such that $Y = [s]G$
+* the signature is $(R, z)$ such that $R = [k]G$ and $z = k + s \cdot c$
+
+From page 6 of the FROST paper this is their notation for the simple Schnorr protocol:
+
+![Screenshot 2023-12-06 at 1.27.51 PM](https://hackmd.io/_uploads/HymPwPRSa.png)
+
+In addition, FROST has the MPC committee compute additive shares for $R$ and $z$, so that they can be computed by using a sum of the computed shares ($R = \sum R_i$ and $z = \sum z_i$).
+
+## Discussion
+
+The verifier ends up checking this equation:
+
+$$
+R == [z]G - [c]Y
+$$
+
+but in reality, they are checking the equation with $Y' = Y + [\text{tweak}] G$ which is the tweaked public key:
+
+$$
+R == [z]G - [c]Y'
+$$
+
+And due to that, the aggregator uses $z' = z + c \cdot \text{tweak}$ to cancel out the tweak:
+
+$$
+R == [z']G - [c]Y'
+$$
+
+On top of this:
+
+1. the verifier uses $R'$ which could be $-R$  or $R$ depending on the parity of $R$ (this is due to only having access to the x coordinate of $R$)
+2. $Y'$ is actually computed using $-Y$ or $Y$ depending on the parity of $Y$ (for the same reasons)
+
+So the equation sort of looks like this if we open things up:
+
+$$
+[+-k]G == [k + s \cdot c + c \cdot \text{tweak}]G - [c]Y - [c \cdot \text{tweak}]Y
+$$
+
+![IMG_F5F98452A39B-1](https://hackmd.io/_uploads/BkL2IvP86.jpg)
+
+Issues can arise in three locations:
+
+* MPC signers might not compute the right value to cancel terms
+* The orchestrator might not aggregate the right things
+* The verification equation might not use the right values
+
+## 5. Proof systems supported
+
+In the initial version of zkBitcoin we support plonk proofs built using [Circom](https://github.com/iden3/circom) and [Snarkjs](https://github.com/iden3/snarkjs) with parameters supporting circuits of $2^{16}$ constraints maximum.
+
+We ignore proof systems like Groth16 which are heavily used on other networks like Ethereum, as it would mean supporting different parameters for different circuits.
+
+In practice, we could support different parameter sizes, as well as different proof systems, with the addition of a flag to the data field of zkapp transactions. This is something that we will explore in the future.
+
+## 6. Security Considerations
+
+Our system's security relies on the security of the MPC committee. 
+
+* as long as a threshold of the committee is honest, and live, the funds are safe
+* if the threshold is not met, liveness issues
+* if an adversary can corrupt an entire threshold, then safety issue: the funds can be drained
+* Committee could be a trusted set of entities (we're trying to figure out who would be interested)
+* after that, we could add more security: run MPC in SGX, and we could publish the SGX attestation that the shares were generated correctly
 
 * Key refresh from https://github.com/cronokirby/cait-sith/blob/main/docs/key-generation.md
-* Committee could be a trusted set of entities (we're trying to figure out who would be interested)
-* run MPC in SGX, and we could publish the SGX attestation that the shares were generated correctly
 * after that, liveness could still be an issue, as currently the network might not have the best incentives to run (future work?)
 
-## 6. Benchmarks
+## 7. Benchmarks
 
 * we should try to run the protocol with like 100 participants and a threshold of 51? see how efficient it is (to me it looks like FROST is a very efficient protocol)
 * maybe the FROST paper already has benchmarks?
 
-## 7. Conclusion and Future work
+## 8. Conclusion and Future work
 
-## 8. References
+## 9. References
+
