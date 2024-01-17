@@ -65,9 +65,7 @@ Stateful zkapps are similar, except that the second UTXO containing a hash of th
 Users who want to use a stateful zkapp must create a transaction that spends the zkapp and produce a new zkapp as a new UTXO to `0xzkBitcoin` and a UTXO of the hashed verifier key and new state. The funds locked in the updated zkapp must match the following formula: 
 
 $$
-\usepackage{underscore}
-\usepackage[T1]{fontenc}
-b_{\text{new}} = b_{\text{old}} + b_{\text{amount\_in}} - b_{\text{amount\_out}}
+b_{\text{new}} = b_{\text{old}} + b_{\text{amount-in}} - b_{\text{amount-out}}
 $$
 
 In other words, the new balance is the old balance plus anything that was deposited and minus anything that was withdrawn.
