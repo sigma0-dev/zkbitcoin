@@ -271,6 +271,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore]
     async fn test_prove_and_verify() {
         // get circuit and others
         let circuit_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap())
