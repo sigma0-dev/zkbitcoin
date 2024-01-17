@@ -374,59 +374,34 @@ pub struct Round2Response {
   
 > TODO: what happens if the orchestrator crash at some point? Restart the protocol right?
 
-### Making Bitcoin compatible with taproot
+### Making FROST compatible with Bitcoin's taproot upgrade
 
-FROST is not compatible with Bitcoin Schnorr's standard (BIP 340 and BIP 341) because of two additions in the Bitcoin scheme: elliptic curve points lose information (they only carry the x coordinate) and public keys can be tweaked (this is due to the taproot design).
+To perform a multi-party computation of a schnorr signature, the MPC committee is instantiated with the [FROST](https://eprint.iacr.org/2020/852) protocol.
 
-Some recap and notation:
+To recap, the schnorr signature scheme standardized in [BIP 340](https://github.com/bitcoin/bips/blob/master/bip-0340.mediawiki) for Bitcoin works as follows:
 
-* the keypair is $(s, Y)$ such that $Y = [s]G$
-* the signature is $(R, z)$ such that $R = [k]G$ and $z = k + s \cdot c$
+* the elliptic curve used in Bitcoin is [secp256k1](https://en.bitcoin.it/wiki/Secp256k1) with its generator $G$
+* a keypair is $(s, Y)$ such that $Y = [s]G$
+* a signature is $(R, z)$ such that $R = [k]G$ and $z = k + s \cdot c$ with $k$ being a random nonce
+* verifying a signature means checking that $[z]G - [c]Y - R = \mathcal{O}$
 
-From page 6 of the FROST paper this is their notation for the simple Schnorr protocol:
+Unfortunately, vanilla FROST is not compatible with Bitcoin Schnorr's standard ([BIP 340](https://github.com/bitcoin/bips/blob/master/bip-0340.mediawiki) and [BIP 341](https://github.com/bitcoin/bips/blob/master/bip-0341.mediawiki)) because of two additions in the Bitcoin version of the scheme. 
 
-![Screenshot 2023-12-06 at 1.27.51 PM](https://hackmd.io/_uploads/HymPwPRSa.png)
+The first change is that elliptic curve points lose information as they are transmitted on chain: the $y$ coordinate of every point is removed and they can only be identified by their x coordinate. As two points exists for the same x coordinate (i.e. if $(x, y)$ exists on the curve then $(x, -y)$ exists on the curve as well) Bitcoin specifies that recovered points always have even $y$ coordinates.
 
-In addition, FROST has the MPC committee compute additive shares for $R$ and $z$, so that they can be computed by using a sum of the computed shares ($R = \sum R_i$ and $z = \sum z_i$).
+The second change is that schnorr public keys are tweaked before being used. The tweak allows to hide more information in the public key, and is part of the BIP 341 standard. If $Y$ is the actual schnorr public key, the tweaked public key $Y'$ is computed as follows:
 
-## Discussion
+$$Y' = Y + [t]G$$
 
-The verifier ends up checking this equation:
+With $t$ is the tweak (we refer to BIP 341 for its calculation).
 
-$$
-R == [z]G - [c]Y
-$$
+In practice, implementations compatible with Bitcoin will "correct" the different values used in the scheme depending on the derived published values. For example, if a signing operation produces an elliptic curve point $R = [k]G$ that has an odd $y$ coordinate, then $k$ is negated. This is because the point that the chain sees is $-R$ as it expects an even $y$ coordinate.
 
-but in reality, they are checking the equation with $Y' = Y + [\text{tweak}] G$ which is the tweaked public key:
+For FROST, this means that private values must be corrected in a number of places. First, signers must ensure that they're using the correct nonces (after R waas produced, as was explained in the previous examples), and that they're using the correct signer share. The latter point can be done right after key generation (depending on what the aggregated public key $Y$ looks like without its $y$ coordinate) or on the fly everytime during signing.
 
-$$
-R == [z]G - [c]Y'
-$$
+Second, the aggregator must produce the second part of the signature ($[z]G$) correctly depending on the aggregated public key $Y'$ which could, without its $y$ coordinate, be interpreted with a negative tweak. We summarize all these edge-cases in the following figure.
 
-And due to that, the aggregator uses $z' = z + c \cdot \text{tweak}$ to cancel out the tweak:
-
-$$
-R == [z']G - [c]Y'
-$$
-
-On top of this:
-
-1. the verifier uses $R'$ which could be $-R$  or $R$ depending on the parity of $R$ (this is due to only having access to the x coordinate of $R$)
-2. $Y'$ is actually computed using $-Y$ or $Y$ depending on the parity of $Y$ (for the same reasons)
-
-So the equation sort of looks like this if we open things up:
-
-$$
-[+-k]G == [k + s \cdot c + c \cdot \text{tweak}]G - [c]Y - [c \cdot \text{tweak}]Y
-$$
-
-![IMG_F5F98452A39B-1](https://hackmd.io/_uploads/BkL2IvP86.jpg)
-
-Issues can arise in three locations:
-
-* MPC signers might not compute the right value to cancel terms
-* The orchestrator might not aggregate the right things
-* The verification equation might not use the right values
+![FROST changes](https://i.imgur.com/Gudm4Nr.png)
 
 ## 5. Proof systems supported
 
