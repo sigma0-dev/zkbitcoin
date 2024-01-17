@@ -256,20 +256,18 @@ Transaction {
 }
 ```
 
-### MPC orchestrator
+### multi-party protocol
 
-Characters:
+This section specifies the multi-party architecture of zkBitcoin. We first introduce a number of useful characters:
 
-* Alice, she locks fund in a "smart contract"
-* Bob, he unlocks fund from the smart contract
-* MPC members, a committee of N members, of which T < N needs to be online to unlock the funds by signing a transaction collaboratively (using [FROST](https://eprint.iacr.org/2020/852))
-* Orchestrator, an endpoint that Bob can query to unlock the funds, the orchestrator literally "orchestrates" the signature by talking to the MPC members (MPC members don't talk to one another).
+* Alice is the user that wants to lock her funds in a zkapp
+* Bob is the user that wants to unlock funds from Alice's smart contract
+* MPC members form a committee of $N$ members, of which the threshold $T < N$ needs to be online to unlock the funds by signing a transaction collaboratively
+* The orchestrator is an endpoint that Bob can query to unlock the funds, and who literally "orchestrates" the signature process by talking to the MPC members (MPC members don't talk to one another, and Bob does not need to talk to them either).
 
-Flow:
+Now that the characters have been introduced, here is the flow, which starts with Bob as Alice does not need to use the zkBitcoin service in order to deploy a zkapp.
 
-The current proposed flow is the following:
-
-- Bob sends a request to an orchestrator:
+Bob starts by sending a request to the orchestrator:
 
 ```rust
 pub struct BobRequest {
@@ -301,11 +299,34 @@ pub struct BobRequest {
     /// (This is needed to sign the transaction.)
     /// We can trust this because if Bob sends us wrong data the signature we create simply won't verify.
     pub prev_outs: Vec<TxOut>,
+}
 ```
 
-- The orchestrator validates the request and aborts if the request is not valid (proof does not verify, or txid has been spent, etc.)
-- The orchestrator then hits the `/round_1_signing` endpoint of each MPC member (or a threshold of it) forwarding Bob's request as is.
-- A member that receives such a request verifies the request as well, then starts a `LocalSigningTask` with a message set to the transaction to sign (which they can create deterministically, so that everyone has the same)
+where an update is useful only when a stateful zkapp is being used:
+
+```rust
+pub struct Update {
+    /// The new state after update.
+    pub new_state: String,
+
+    /// The state of the zkapp being used.
+    pub prev_state: String,
+
+    /// The truncated txid should be rederived by the verifier.
+    #[serde(skip)]
+    pub truncated_txid: Option<String>,
+
+    /// The amount being withdrawn from the zkapp.
+    pub amount_out: String,
+
+    /// The amount being deposited into the zkapp.
+    pub amount_in: String,
+}
+```
+
+The orchestrator validates the request and aborts if the request is not valid (proof does not verify, or txid has been spent, etc.). The orchestrator then hits the `/round_1_signing` endpoint of each MPC member (or a threshold of it) forwarding Bob's request as is.
+
+A member of the MPC committee that receives such a request verifies the request as well, then starts a `LocalSigningTask` with a message set to the transaction to sign.
 
 ```rust
 pub struct LocalSigningTask {
@@ -319,7 +340,6 @@ pub struct LocalSigningTask {
     pub prev_outs: Vec<TxOut>,
     /// The nonces behind these commitments
     pub nonces: round1::SigningNonces,
-    // TODO: should we keep track of commitments here also to double check?
 }
 ```
 
@@ -337,13 +357,11 @@ pub struct Round1Response {
 }
 ```
 
-Note that a committee member doesn't necessarily care about seeing different local tasks for the same `txid`. They'll just keep track of the last one. If they see a new request for the same txid incoming, they will ignore it if the request's proof matches, or go through the flow again if its a new proof (keeping track of the last proof they've seen).
+Note that a committee member doesn't necessarily care about seeing different local tasks for the same `txid`. They'll just keep track of the last one. If they see a new request for the same `txid` incoming, they will ignore it if the request's proof matches, or go through the flow again if its a new proof (keeping track of the last proof they've seen).
 
-They also do not need to keep track of what round they are in. The existe of a LocalSigningTask means that there has been a proof that was verified, and that a transaction is being signed. If the `commitments` vector is not empty, then the first round has been completed. (But since the `LocalSigningTask` still exists the second round hasn't been completed, otherwise the member would have pruned it.)
+They also do not need to keep track of what round they are in. The existence of a `LocalSigningTask` means that there has been a proof that was verified, and that a transaction is being signed. If the `commitments` vector is not empty, then the first round has been completed. (But since the `LocalSigningTask` still exists the second round hasn't been completed, otherwise the member would have pruned it.)
 
-> TODO: are there any issues with not keeping track of nonces and stuff for the same message? Similar attacks to nonce-reuse?
-
-- The orchestrator continues until they collect a threshold of `SigningCommitments`, which they can convert into a `SigningPackage`. They will then send the `SigningCommitments` to all the participants in that signature by hitting their `/round_2_signing` endpoint.
+The orchestrator continues until they collect a threshold of `SigningCommitments`, which they can convert into a `SigningPackage`. They will then send the `SigningCommitments` to all the participants in that signature by hitting their `/round_2_signing` endpoint.
 
 ```rust
 pub struct Round2Request {
@@ -361,18 +379,19 @@ pub struct Round2Request {
     /// While not necessary as nodes will recompute it themselves, it is good to double check that everyone is on the same page.
     pub message: [u8; 32],
 }
+```
 
+A member that receives such a request can recreate the `SigningPackage`, and perform the second round of the signature protocol, delete their `LocalSigningTask`, and respond to the orchestrator with their signature share.
+
+```rust
 pub struct Round2Response {
     pub signature_share: frost_secp256k1_tr::round2::SignatureShare,
 }
 ```
 
-- A member that receives such a request can recreate the `SigningPackage`, and perform the second round of the signature protocol, delete their `LocalSigningTask` and respond to the orchestrator with their signature share.
-- The orchestrator will collect a threshold of signature shares, and will then send the aggregated signature back to Bob.
+The orchestrator will collect a threshold of signature shares, and will then send the aggregated signature back to Bob.
 
-> TODO: what to do if the orchestrator gets time outs from their request? Or can't meet a threshold?
-  
-> TODO: what happens if the orchestrator crash at some point? Restart the protocol right?
+It is the responsibility of Bob to add the signature to the right input in their transaction, and broadcast it to the Bitcoin network.
 
 ### Making FROST compatible with Bitcoin's taproot upgrade
 
