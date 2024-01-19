@@ -2,6 +2,8 @@
 
 Use **zero-knowledge applications (zkapps)** on Bitcoin! (**Currently only on testnet.**)
 
+![image](https://github.com/sigma0-xyz/zkbitcoin/assets/1316043/5fe31a43-1775-4ebb-b6ac-510651e8b08a)
+
 **How does it work**? Write your zkapp in [circom](https://github.com/iden3/circom) and deploy it on Bitcoin by sending a transaction to our multi-party wallet run by a committee of nodes.
 
 To use a zkapp, provide a correct proof of execution using [snarkjs](https://github.com/iden3/snarkjs) to our multi-party wallet which will trigger a threshold signature, eventually allowing funds to move out of the zkapp.
