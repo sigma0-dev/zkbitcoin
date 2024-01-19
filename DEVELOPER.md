@@ -25,7 +25,7 @@ You can also use curl to query it:
 curl --user root --data-binary '{"jsonrpc": "1.0", "id": "curltest", "method": "getblock", "params": ["00000000c937983704a73af28acdec37b049d214adbda81d7e2a3dd146f6ed09"]}' -H 'content-type: text/plain;' http://127.0.0.1:18332/
 ```
 
-If you want to expose this to the internet, you can setup a reverse proxy like nginx. This is the config I use (in `/etc/nginx/sites-enabled/bitcoind-proxy.conf`):
+If you want to expose this to the internet, you can setup a reverse proxy like [nginx](https://www.nginx.com/). This is the config I use (in `/etc/nginx/sites-enabled/bitcoind-proxy.conf`):
 
 ```
 server {
@@ -36,56 +36,6 @@ server {
         proxy_pass http://127.0.0.1:18332;
     }
 }
-```
-
-## Our own bitcoind
-
-We're running one on digitalocean at [146.190.33.39](http://146.190.33.39). You can query it with:
-
-```console
-curl --user root:hellohello --data-binary '{"jsonrpc": "1.0", "id": "curltest", "method": "getblockchaininfo", "params": []}' -H 'content-type: text/plain;' http://146.190.33.39:18331
-```
-
-### Our wallets
-
-I created a wallet called `mywallet` via:
-
-```shell
-bitcoin-cli -testnet -rpcconnect=146.190.33.39 -rpcport=18331 -rpcuser=root -rpcpassword=hellohello createwallet mywallet
-```
-
-Created another wallet `wallet2`:
-
-```shell
-bitcoin-cli -testnet -rpcconnect=146.190.33.39 -rpcport=18331 -rpcuser=root -rpcpassword=hellohello createwallet wallet2
-```
-
-You can get information about a wallet using:
-
-```shell
-bitcoin-cli -testnet -rpcconnect=146.190.33.39 -rpcport=18331 -rpcuser=root -rpcpassword=hellohello -rpcwallet=mywallet getwalletinfo
-```
-
-Obtain a new address via:
-
-```shell
-bitcoin-cli -testnet -rpcconnect=146.190.33.39 -rpcport=18331 -rpcuser=root -rpcpassword=hellohello -rpcwallet=mywallet getnewaddress
-```
-
-(I believe we can switch wallets by using the `loadwallet` command.)
-
-The addresses I've been using:
-
-* `tb1pxggs3tg09877hzqy6fhrg3wjat8c6jue83r3surjtwpgtsqwp5wqe5xpj5`: the zkBitcoin address, where zkapps have to be sent to.
-* `tb1pv7auuumlqm9kehlep4y83xcthyma5yvprvlx39k7xvveh48976sq7e6sr5`: the zkBitcoin fund, where fees are being paid to when using zkapps (deploying is free).
-* `tb1q6vjawwska63qxf77rrm5uwqev0ma8as8d0mkrt`: Bob address.
-
-It's a good idea to fund them from times to times using [a faucet](https://bitcoinfaucet.uo1.net/send.php).
-
-Note that you can get their associated public keys via:
-
-```shell
-bitcoin-cli -testnet -rpcconnect=146.190.33.39 -rpcport=18331 -rpcuser=root -rpcpassword=hellohello -rpcwallet=mywallet getaddressinfo "tb1q5pxn428emp73saglk7ula0yx5j7ehegu6ud6ad"
 ```
 
 ## Non-user nodes
