@@ -3,7 +3,7 @@
 /// The public key of zkBitcoin.
 // TODO: do we ever need this pubkey or can we just use the address?
 pub const ZKBITCOIN_PUBKEY: &str =
-    "025f822acf42cdb49de4c322f3131aa396dda0183a37889ecdfba99615ac9f6ff7"; // TODO: change this to a real pubkey in prod
+    "02bd84fcbb2ad2f274079c68580a5a1e234bd88ed6ee38f2b33a303fd38a104942"; // TODO: change this to a real pubkey in prod
 
 // The address is associated to [ZKBITCOIN_FEE_PUBKEY]
 // TODO: obviously change this in prod
