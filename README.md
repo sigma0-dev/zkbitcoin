@@ -26,7 +26,7 @@ The zkapp does not have to do anything with this (although it can if it wants to
 Alice can deploy such a stateless zkapp with the following command:
 
 ```shell
-RPC_WALLET="mywallet" RPC_ADDRESS="http://146.190.33.39:18331" RPC_AUTH="root:hellohello" cargo run -- deploy-zkapp --circom-circuit-path examples/circuit/stateless.circom --satoshi-amount 1000
+RPC_WALLET="mywallet" RPC_ADDRESS="http://127.0.01:18331" RPC_AUTH="root:hellohello" cargo run -- deploy-zkapp --circom-circuit-path examples/circuit/stateless.circom --satoshi-amount 1000
 ```
 
 This will lock 1,000 satoshis in the zkapp and return the transaction ID of the transaction that deployed the zkapp. A stateless zkapp can be referenced by that transaction ID, which handily also contains an output authenticating the compiled smart contract (more specifically, an `OP_RETURN` output of the verifier key).
@@ -34,7 +34,7 @@ This will lock 1,000 satoshis in the zkapp and return the transaction ID of the 
 Bob can then unlock the funds from the stateless zkapp (by specifying its transaction ID) with the following command:
 
 ```shell
-RPC_WALLET="mywallet" RPC_ADDRESS="http://146.190.33.39:18331" RPC_AUTH="root:hellohello" cargo run -- use-zkapp --txid "e793bdd8dfdd9912d971790a5f385ad3f1215dce97e25dbefe5449faba632836" --circom-circuit-path examples/circuit/stateless.circom --proof-inputs '{"preimage":["1"]}' --recipient-address "tb1q6nkpv2j9lxrm6h3w4skrny3thswgdcca8cx9k6"
+RPC_WALLET="mywallet" RPC_ADDRESS="http://127.0.01:18331" RPC_AUTH="root:hellohello" cargo run -- use-zkapp --txid "e793bdd8dfdd9912d971790a5f385ad3f1215dce97e25dbefe5449faba632836" --circom-circuit-path examples/circuit/stateless.circom --proof-inputs '{"preimage":["1"]}' --recipient-address "tb1q6nkpv2j9lxrm6h3w4skrny3thswgdcca8cx9k6"
 ```
 
 ### Stateful zkapps
@@ -55,13 +55,13 @@ template Main() {
 Alice can deploy a stateful zkapp with the following command:
 
 ```shell
-RPC_WALLET="mywallet" RPC_ADDRESS="http://146.190.33.39:18331" RPC_AUTH="root:hellohello" cargo run -- deploy-zkapp --circom-circuit-path examples/circuit/stateful.circom --initial-state "1" --satoshi-amount 1000     
+RPC_WALLET="mywallet" RPC_ADDRESS="http://127.0.01:18331" RPC_AUTH="root:hellohello" cargo run -- deploy-zkapp --circom-circuit-path examples/circuit/stateful.circom --initial-state "1" --satoshi-amount 1000     
 ```
 
 Bob can then use the stateful zkapps with the following command:
 
 ```shell
-ENDPOINT="http://127.0.0.1:6666" RPC_WALLET="mywallet" RPC_ADDRESS="http://146.190.33.39:18331" RPC_AUTH="root:hellohello" cargo run -- use-zkapp --circom-circuit-path examples/circuit/stateful.circom --proof-inputs '{"amount_in":["1000"], "amount_out":["1000"]}' --recipient-address "tb1q6vjawwska63qxf77rrm5uwqev0ma8as8d0mkrt" --txid "76763d6130ee460ede2739e0f38ea4d61cc940b00af5eab83e5afb0fcc837b91"
+RPC_WALLET="mywallet" RPC_ADDRESS="http://127.0.01:18331" RPC_AUTH="root:hellohello" cargo run -- use-zkapp --circom-circuit-path examples/circuit/stateful.circom --proof-inputs '{"amount_in":["1000"], "amount_out":["1000"]}' --recipient-address "tb1q6vjawwska63qxf77rrm5uwqev0ma8as8d0mkrt" --txid "76763d6130ee460ede2739e0f38ea4d61cc940b00af5eab83e5afb0fcc837b91"
 ```
 
 specifying the following inputs:
@@ -70,8 +70,6 @@ specifying the following inputs:
 * `amount_in`: amount being deposited
 
 Other inputs will be automatically filled in (for example, it will use the zkapp's state as `prev_state` input).
-
-The `ENDPOINT` environment variable is the URL of the orchestrator.
 
 ## Tell me more
 
