@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.4
+# Build the `zkbtc` binary
 FROM rust as build
 
 WORKDIR /app
@@ -8,13 +8,15 @@ COPY Cargo.* .
 
 RUN cargo build --release
 
+# Install dependencies and copy the `zkbtc` binary
 FROM ubuntu:latest
 
 RUN apt update; apt install -y nodejs npm; npm install -g snarkjs@latest
 
-COPY --from=build /app/target/release/zkbtc /usr/local/bin/
+COPY --link --from=build /app/target/release/zkbtc /usr/local/bin/
+COPY --link ./examples ./examples
+
+WORKDIR /app
+EXPOSE 8891
 
 ENV RUST_LOG=debug
-
-ENTRYPOINT ["/app/target/release/zkbtc"]
-CMD ["start-committee-node", "--key-path=examples/committee/key-0.json", "--publickey-package-path=examples/committee/publickey-package.json", "--address=127.0.0.1:8891"]
