@@ -8,9 +8,9 @@ To use a zkapp, provide a correct proof of execution using [snarkjs](https://git
 
 [Check the whitepaper here](./whitepaper.pdf).
 
-## Usage
+## Installation
 
-### Installation
+Jump straight to [usage](#usage) if you want to see some examples, but make sure to read this section otherwise things won't work!
 
 ### Circom/snarkjs
 
@@ -35,6 +35,8 @@ To install `zkbtc`, run the following command:
 ```shell
 cargo install --git https://github.com/sigma0-xyz/zkbitcoin.git
 ```
+
+## Usage
 
 ### Stateless zkapps
 
