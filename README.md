@@ -6,17 +6,29 @@ Use **zero-knowledge applications (zkapps)** on Bitcoin! (**Currently only on te
 
 To use a zkapp, provide a correct proof of execution using [snarkjs](https://github.com/iden3/snarkjs) to our multi-party wallet which will trigger a threshold signature, eventually allowing funds to move out of the zkapp.
 
+[Check the whitepaper here](./whitepaper.pdf).
+
 ## Usage
 
 ### Requirements
 
-We build on top of the well-known [circom](https://github.com/iden3/circom)/[snarkjs](https://github.com/iden3/snarkjs) stack. On top that, you'll need your own Bitcoin node/wallet running locally. This application will perform queries to your node/wallet in order to deposit or withdraw funds from zkapps.
+We build on top of the well-known [circom](https://github.com/iden3/circom)/[snarkjs](https://github.com/iden3/snarkjs) stack. On top that, you'll need your own Bitcoin node/wallet. This application will perform queries to your node/wallet in order to fund your zkapp transactions.
+
+All the following commands expects the following environment variables to be set so that it can communicate with your node/wallet:
+
+```shell
+export RPC_WALLET="walletname"
+export RPC_ADDRESS="http://127.0.01:18331"
+export RPC_AUTH="username:password"
+```
 
 ### Stateless zkapps
 
-A stateless zkapp is a zkapp that can be unlocked (its funds can be unlocked) by anyone who can provide a proof of correct execution. An example of a stateless zkapp is in [`examples/circuit/stateless.circom`](examples/circuit/stateless.circom). A stateless zkapp always contains one public input that authenticates the transaction that spends it:
+A stateless zkapp is single-use, and the bitcoin it locks can be redeemed by anyone who can provide a proof of correct execution. An example of a stateless zkapp is in [`examples/circuit/stateless.circom`](examples/circuit/stateless.circom) (which releases funds to anyone who can find the preimage of a hash function). 
+A stateless zkapp always contains one public input that authenticates the transaction that spends it:
 
 ```circom
+// circom code
 template Main() {
     signal input truncated_txid;
 ```
@@ -26,7 +38,7 @@ The zkapp does not have to do anything with this (although it can if it wants to
 Alice can deploy such a stateless zkapp with the following command:
 
 ```shell
-RPC_WALLET="mywallet" RPC_ADDRESS="http://127.0.01:18331" RPC_AUTH="root:hellohello" cargo run -- deploy-zkapp --circom-circuit-path examples/circuit/stateless.circom --satoshi-amount 1000
+cargo run -- deploy-zkapp --circom-circuit-path examples/circuit/stateless.circom --satoshi-amount 1000
 ```
 
 This will lock 1,000 satoshis in the zkapp and return the transaction ID of the transaction that deployed the zkapp. A stateless zkapp can be referenced by that transaction ID, which handily also contains an output authenticating the compiled smart contract (more specifically, an `OP_RETURN` output of the verifier key).
@@ -34,7 +46,7 @@ This will lock 1,000 satoshis in the zkapp and return the transaction ID of the 
 Bob can then unlock the funds from the stateless zkapp (by specifying its transaction ID) with the following command:
 
 ```shell
-RPC_WALLET="mywallet" RPC_ADDRESS="http://127.0.01:18331" RPC_AUTH="root:hellohello" cargo run -- use-zkapp --txid "e793bdd8dfdd9912d971790a5f385ad3f1215dce97e25dbefe5449faba632836" --circom-circuit-path examples/circuit/stateless.circom --proof-inputs '{"preimage":["1"]}' --recipient-address "tb1q6nkpv2j9lxrm6h3w4skrny3thswgdcca8cx9k6"
+cargo run -- use-zkapp --txid "e793bdd8dfdd9912d971790a5f385ad3f1215dce97e25dbefe5449faba632836" --circom-circuit-path examples/circuit/stateless.circom --proof-inputs '{"preimage":["1"]}' --recipient-address "tb1q6nkpv2j9lxrm6h3w4skrny3thswgdcca8cx9k6"
 ```
 
 ### Stateful zkapps
@@ -55,13 +67,13 @@ template Main() {
 Alice can deploy a stateful zkapp with the following command:
 
 ```shell
-RPC_WALLET="mywallet" RPC_ADDRESS="http://127.0.01:18331" RPC_AUTH="root:hellohello" cargo run -- deploy-zkapp --circom-circuit-path examples/circuit/stateful.circom --initial-state "1" --satoshi-amount 1000     
+cargo run -- deploy-zkapp --circom-circuit-path examples/circuit/stateful.circom --initial-state "1" --satoshi-amount 1000     
 ```
 
 Bob can then use the stateful zkapps with the following command:
 
 ```shell
-RPC_WALLET="mywallet" RPC_ADDRESS="http://127.0.01:18331" RPC_AUTH="root:hellohello" cargo run -- use-zkapp --circom-circuit-path examples/circuit/stateful.circom --proof-inputs '{"amount_in":["1000"], "amount_out":["1000"]}' --recipient-address "tb1q6vjawwska63qxf77rrm5uwqev0ma8as8d0mkrt" --txid "76763d6130ee460ede2739e0f38ea4d61cc940b00af5eab83e5afb0fcc837b91"
+cargo run -- use-zkapp --circom-circuit-path examples/circuit/stateful.circom --proof-inputs '{"amount_in":["1000"], "amount_out":["1000"]}' --recipient-address "tb1q6vjawwska63qxf77rrm5uwqev0ma8as8d0mkrt" --txid "76763d6130ee460ede2739e0f38ea4d61cc940b00af5eab83e5afb0fcc837b91"
 ```
 
 specifying the following inputs:
@@ -73,4 +85,4 @@ Other inputs will be automatically filled in (for example, it will use the zkapp
 
 ## Tell me more
 
-You can read more about zkBitcoin in [our documentation](docs/), and about advanced usage in [our developer documentation](DEVELOPER.md).
+You can read more about zkBitcoin in [our whitepaper](./whitepaper.pdf), [our documentation](docs/), and about advanced usage in [our developer documentation](DEVELOPER.md).
