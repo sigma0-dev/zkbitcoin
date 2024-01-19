@@ -4,7 +4,7 @@ Authors: David Wong and Ivan Mikushin
 
 ## Abstract
 
-We introduce a light multi-party computation protocol to verify zero-knowledge proof circuits on Bitcoin. This enables two use-cases: stateless zkApps (zero-knowledge applications) that lock funds on Bitcoin until users unlock them using zero-knowledge proofs, and stateful zkApps that allow users to update, deposit, and withdraw from a zkApp using zero-knowledge proofs. Since zero-knowledge proofs can't be verified directly on Bitcoin (for lack of optimized opcodes) we use a multi-party committee to verify them off-chain and compute a single on-chain signature. The protocol is akin to a minimal layer 2 on top of Bitcoin that uses Bitcoin as a data-availability layer. Specifically, the committee in charge of verifying zero-knowledge proofs does not have to be connected to the chain as hashes of circuits (verifier keys) are stored in UTXOs on-chain, and the latest state of a (stateful) application is also stored and kept on-chain.
+We introduce a light multi-party computation protocol to verify zero-knowledge proof circuits on Bitcoin. This enables two use-cases: stateless zkapps (zero-knowledge applications) that lock funds on Bitcoin until users unlock them using zero-knowledge proofs, and stateful zkapps that allow users to update, deposit, and withdraw from a zkapp using zero-knowledge proofs. Since zero-knowledge proofs can't be verified directly on Bitcoin (for lack of optimized opcodes) we use a multi-party committee to verify them off-chain and compute a single on-chain signature. The protocol is akin to a minimal layer 2 on top of Bitcoin that uses Bitcoin as a data-availability layer. Specifically, the committee in charge of verifying zero-knowledge proofs does not have to be connected to the chain as hashes of circuits (verifier keys) are stored in UTXOs on-chain, and the latest state of a (stateful) application is also stored and kept on-chain.
 
 keywords: Bitcoin, UTXO, zero-knowledge proofs, ZKP, multi-party computation, MPC, L2
 
@@ -52,17 +52,17 @@ TODO: block stream also? (https://blog.blockstream.com/bulletproofs-a-step-towar
 
 The zkBitcoin protocol works with the assumption that there exists a committee of participants that are willing to verify zero-knowledge proofs for users. This committee controls a Bitcoin address, that we'll call `0xzkBitcoin`, using a threshold signature scheme. This way, no member of the committee knows the private key of the wallet, and UTXOs can only be spent with the agreement of a threshold of committee members.
 
-We support two types of zero-knowledge applications (zkApps): _stateless_ and _stateful_ zkApps. Let's first explain how stateless zkApps work.
+We support two types of zero-knowledge applications (zkapps): _stateless_ and _stateful_ zkapps. Let's first explain how stateless zkapps work.
 
-Stateless zkApps are simply an augmentation of the Bitcoin scripting language, that allows a user to lock funds using a zero-knowledge circuit instead of a Bitcoin script. A user can _deploy_ such a stateless zkApp by sending a transaction to the Bitcoin network containing a UTXO spendable by `0xzkBitcoin`. In addition, the transaction must also have an unspendable UTXO containing the hash of the verifier key associated to the zero-knowledge proof circuit.
+Stateless zkapps are simply an augmentation of the Bitcoin scripting language, that allows a user to lock funds using a zero-knowledge circuit instead of a Bitcoin script. A user can _deploy_ such a stateless zkapp by sending a transaction to the Bitcoin network containing a UTXO spendable by `0xzkBitcoin`. In addition, the transaction must also have an unspendable UTXO containing the hash of the verifier key associated to the zero-knowledge proof circuit.
 
-The transaction ID of this transaction represents the stateless zkApp. To unlock funds from this zkApp/UTXO, another user can provide the committee with a transaction that spends the UTXO. If the request is accompanied with a valid zero-knowledge proof that the user could execute the circuit authenticated by the unspendable UTXO, the committee will perform a multi-party computation to sign the transaction and return it to the user. The user can then broadcast the transaction to the Bitcoin network and unlock the funds.
+The transaction ID of this transaction represents the stateless zkapp. To unlock funds from this zkapp/UTXO, another user can provide the committee with a transaction that spends the UTXO. If the request is accompanied with a valid zero-knowledge proof that the user could execute the circuit authenticated by the unspendable UTXO, the committee will perform a multi-party computation to sign the transaction and return it to the user. The user can then broadcast the transaction to the Bitcoin network and unlock the funds.
 
 It is important to note that the committee members did not need access to the Bitcoin blockchain to perform their duty: they simply had to verify that the UTXO being spent was part of a transaction matching the previous description of a deployment transaction.
 
-Stateful zkApps are similar, except that the second UTXO containing a hash of the verifier key also contains the state of the zkApp. For the deploy transaction, this means that the second UTXO must also contain the initial state.
+Stateful zkapps are similar, except that the second UTXO containing a hash of the verifier key also contains the state of the zkapp. For the deploy transaction, this means that the second UTXO must also contain the initial state.
 
-Users who want to use a stateful zkApp must create a transaction that spends the zkApp and produce a new zkApp as a new UTXO to `0xzkBitcoin` and a UTXO of the hashed verifier key and new state. The funds locked in the updated zkApp must match the following formula: 
+Users who want to use a stateful zkapp must create a transaction that spends the zkapp and produce a new zkapp as a new UTXO to `0xzkBitcoin` and a UTXO of the hashed verifier key and new state. The funds locked in the updated zkapp must match the following formula: 
 
 $$
 b_{\text{new}} = b_{\text{old}} + b_{\text{amount-in}} - b_{\text{amount-out}}
@@ -70,9 +70,9 @@ $$
 
 In other words, the new balance is the old balance plus anything that was deposited and minus anything that was withdrawn.
 
-For the previously discussed mechanisms to work, a stateful zkApp must be linked to a zero-knowledge circuit that takes 4 public inputs in this order: the new state, the previous state, the amount out and the amount in.
+For the previously discussed mechanisms to work, a stateful zkapp must be linked to a zero-knowledge circuit that takes 4 public inputs in this order: the new state, the previous state, the amount out and the amount in.
 
-In addition, to ensure that a proof is strongly tied to a specific transaction, one additional public input is added to both stateless and stateful zero-knowledge circuits: the transaction ID spending the zkApp.
+In addition, to ensure that a proof is strongly tied to a specific transaction, one additional public input is added to both stateless and stateful zero-knowledge circuits: the transaction ID spending the zkapp.
 
 In the next section we give a more detailed specification of the protocol.
 
@@ -82,14 +82,14 @@ In this section we fully review how the protocol works from the point of view of
 
 To recap, zkBitcoin offers two functionalities:
 
-* **Stateless zkApps**: lock some funds and whoever can create a proof can spend _all_ the funds.
-* **Stateful zkApps**: initialize some authenticated state on-chain and update it by providing a proof.
+* **Stateless zkapps**: lock some funds and whoever can create a proof can spend _all_ the funds.
+* **Stateful zkapps**: initialize some authenticated state on-chain and update it by providing a proof.
 
 In the next two subsection, we see how both systems work.
 
-### Stateless zkApps
+### Stateless zkapps
 
-A stateless zkApp can be deployed by anyone (e.g. Alice) with a transaction to `0xzkBitcoin` that contains only one data field: 
+A stateless zkapp can be deployed by anyone (e.g. Alice) with a transaction to `0xzkBitcoin` that contains only one data field: 
 
 1. The digest of a verifier key.
 
@@ -101,7 +101,7 @@ Transaction {
    lock_time: absolute::LockTime::ZERO,
    input: vec![/* alice's funding */],
    output: vec![
-      // one of the outputs is the stateless zkApp
+      // one of the outputs is the stateless zkapp
       TxOut {
          value: /* amount locked */,
          script_pubkey: /* p2tr script to zkBitcoin pubkey */,
@@ -119,7 +119,7 @@ Transaction {
 In order to spend such a transaction, someone (e.g. Bob) needs to produce:
 
 1. The verifier key that hashes to that digest.
-2. An unsigned transaction that consumes a stateless zkApp (as input), and produces a fee to the zkBitcoin fund (as output). All other inputs and outputs are free.
+2. An unsigned transaction that consumes a stateless zkapp (as input), and produces a fee to the zkBitcoin fund (as output). All other inputs and outputs are free.
 3. A proof that verifies with a single public input: a truncated transaction ID (so that the proof authenticates that specific transaction).
 
 To reiterate, the public input is structured as follows:
@@ -128,7 +128,7 @@ To reiterate, the public input is structured as follows:
 PI = [truncated_tixd]
 ```
 
-When observing such a _valid_ request, the MPC committee will sign the zkApp input and return it to Bob.
+When observing such a _valid_ request, the MPC committee will sign the zkapp input and return it to Bob.
 
 In more detail, the following transaction is produced by Bob and sent to the MPC committee:
 
@@ -137,11 +137,11 @@ Transaction {
    version: Version::TWO,
    lock_time: absolute::LockTime::ZERO,
    input: vec![
-      // one of the inputs contains the stateless zkApp
+      // one of the inputs contains the stateless zkapp
       TxIn {
          previous_output: OutPoint {
-               txid: /* the zkApp txid */,
-               vout: /* the output id of the zkApp */,
+               txid: /* the zkapp txid */,
+               vout: /* the output id of the zkapp */,
          },
          script_sig: /* p2tr script to zkBitcoin */,
          sequence: Sequence::MAX,
@@ -160,12 +160,12 @@ Transaction {
 }
 ```
 
-### Stateful zkApps
+### Stateful zkapps
 
-A stateful zkApp can be deployed with a transaction to `0xzkBitcoin` that contains the following data: 
+A stateful zkapp can be deployed with a transaction to `0xzkBitcoin` that contains the following data: 
 
 1. The digest of a verifier key.
-2. 1 field element that represent the initial state of the zkApp. (If there's none the zkApp is treated as a stateless zkApp.)
+2. 1 field element that represent the initial state of the zkapp. (If there's none the zkapp is treated as a stateless zkapp.)
 
 > Note: we are limited to 1 field element as Bitcoin nodes don't forward transactions with more than one `OP_RETURN` output. An `OP_RETURN` seems to be limited to pushing 80 bytes of data, as such we are quite limited here.
 
@@ -177,7 +177,7 @@ Transaction {
    lock_time: absolute::LockTime::ZERO,
    input: vec![/* alice's funding */],
    output: vec![
-      // one of the outputs contain the stateful zkApp
+      // one of the outputs contain the stateful zkapp
       TxOut {
          value: /* amount locked */,
          script_pubkey: /* p2tr script to zkBitcoin */,
@@ -195,7 +195,7 @@ Transaction {
 In order to spend such a transaction Bob needs to produce:
 
 1. The verifier key that hashes to the digest of the verifier key.
-2. An unsigned transaction that consumes a stateful zkApp (as input), and produces a fee to the zkBitcoin fund as well as a new stateful zkApp (as outputs). All other inputs and outputs are free.
+2. An unsigned transaction that consumes a stateful zkapp (as input), and produces a fee to the zkBitcoin fund as well as a new stateful zkapp (as outputs). All other inputs and outputs are free.
 3. A number of public inputs in this order:
    1. The new state as 1 field element.
    2. The previous state as 1 field element.
@@ -214,7 +214,7 @@ PI = [new_state | prev_state | truncated_txid | amount_out | amount_in ]
 
 Because Bob's transaction will contain the new state, Bob needs to run a proof with `truncated_txid=0` first in order to obtain the new state, then run it again with the `txid` obtained. For this reason, **it is important that the output of the circuit is not impacted by the value of `truncated_txid`**.
 
-When receiving such a _valid_ request (e.g. proof verifies), the MPC committee signs the zkApp input of the transaction and returns it to Bob.
+When receiving such a _valid_ request (e.g. proof verifies), the MPC committee signs the zkapp input of the transaction and returns it to Bob.
 
 In more detail:
 
@@ -223,11 +223,11 @@ Transaction {
    version: Version::TWO,
    lock_time: absolute::LockTime::ZERO,
    input: vec![
-      // one of the inputs contains the stateful zkApp
+      // one of the inputs contains the stateful zkapp
       TxIn {
          previous_output: OutPoint {
-               txid: /* the zkApp txid */,
-               vout: /* the output id of the zkApp */,
+               txid: /* the zkapp txid */,
+               vout: /* the output id of the zkapp */,
          },
          script_sig: ScriptBuf::new(),
          sequence: Sequence::MAX,
@@ -241,9 +241,9 @@ Transaction {
          value: /* ZKBITCOIN_FEE */,
          script_pubkey: /* locked for zkBitcoinFund */,
       }
-      // one of the outputs contain the new stateful zkApp
+      // one of the outputs contain the new stateful zkapp
       TxOut {
-         value: /* the zkApp value updated to reflect amount_out and amount_in */,
+         value: /* the zkapp value updated to reflect amount_out and amount_in */,
          script_pubkey: /* locked for zkBitcoin */,
       },
       // an OP_RETURN output containing the vk hash as well as the new state
@@ -260,29 +260,29 @@ Transaction {
 
 This section specifies the multi-party architecture of zkBitcoin. We first introduce a number of useful characters:
 
-* Alice is the user that wants to lock her funds in a zkApp
+* Alice is the user that wants to lock her funds in a zkapp
 * Bob is the user that wants to unlock funds from Alice's smart contract
 * MPC members form a committee of $N$ members, of which the threshold $T < N$ needs to be online to unlock the funds by signing a transaction collaboratively
 * The orchestrator is an endpoint that Bob can query to unlock the funds, and who literally "orchestrates" the signature process by talking to the MPC members (MPC members don't talk to one another, and Bob does not need to talk to them either).
 
-Now that the characters have been introduced, here is the flow, which starts with Bob (as Alice does not need to use the zkBitcoin service in order to deploy a zkApp).
+Now that the characters have been introduced, here is the flow, which starts with Bob (as Alice does not need to use the zkBitcoin service in order to deploy a zkapp).
 
 Bob starts by sending a request to the orchestrator:
 
 ```rust
 pub struct BobRequest {
     /// The transaction authenticated by the proof, and that Bob wants to sign.
-    /// This transaction should contain the zkApp as input, and a fee as output.
-    /// It might also contain a new zkApp as output, in case the input zkApp was stateful.
+    /// This transaction should contain the zkapp as input, and a fee as output.
+    /// It might also contain a new zkapp as output, in case the input zkapp was stateful.
     pub tx: Transaction,
 
-    /// The transaction that deployed the zkApp.
+    /// The transaction that deployed the zkapp.
     /// Technically we could just pass a transaction ID, but this would require nodes to fetch the transaction from the blockchain.
     /// Note that for this optimization to work, we need the full transaction,
     /// as we need to deconstruct the txid of the input of `tx`.
     pub zkapp_tx: Transaction,
 
-    /// The index of the input that contains the zkApp being used.
+    /// The index of the input that contains the zkapp being used.
     // TODO: we should be able to infer this!
     pub zkapp_input: usize,
 
@@ -292,7 +292,7 @@ pub struct BobRequest {
     /// A proof of execution.
     pub proof: plonk::Proof,
 
-    /// In case of stateful zkApps, the update that can be converted as public inputs.
+    /// In case of stateful zkapps, the update that can be converted as public inputs.
     pub update: Option<Update>,
 
     /// List of all the [TxOut] pointed out by the inputs.
@@ -302,24 +302,24 @@ pub struct BobRequest {
 }
 ```
 
-where an update is useful only when a stateful zkApp is being used:
+where an update is useful only when a stateful zkapp is being used:
 
 ```rust
 pub struct Update {
     /// The new state after update.
     pub new_state: String,
 
-    /// The state of the zkApp being used.
+    /// The state of the zkapp being used.
     pub prev_state: String,
 
     /// The truncated txid should be rederived by the verifier.
     #[serde(skip)]
     pub truncated_txid: Option<String>,
 
-    /// The amount being withdrawn from the zkApp.
+    /// The amount being withdrawn from the zkapp.
     pub amount_out: String,
 
-    /// The amount being deposited into the zkApp.
+    /// The amount being deposited into the zkapp.
     pub amount_in: String,
 }
 ```
@@ -428,7 +428,7 @@ In the initial version of zkBitcoin we support PLONK proofs built using [Circom]
 
 We ignore proof systems like Groth16 which are heavily used on other networks like Ethereum, as it would mean supporting different parameters for different circuits.
 
-In practice, we could support different parameter sizes, as well as different proof systems, with the addition of a flag to the data field of zkApp transactions. This is something that we will explore in the future.
+In practice, we could support different parameter sizes, as well as different proof systems, with the addition of a flag to the data field of zkapp transactions. This is something that we will explore in the future.
 
 ## 6. Security Considerations
 
