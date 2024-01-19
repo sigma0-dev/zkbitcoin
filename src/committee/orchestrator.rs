@@ -69,6 +69,8 @@ impl Orchestrator {
         // Validate transaction before forwarding it, and get smart contract
         let smart_contract = bob_request.validate_request().await?;
 
+        // TODO: we might want to check that the zkapp/UTXO is unspent here, but this requires us to have access to a bitcoin node, so for now we don't do it :o)
+
         //
         // Round 1
         //
@@ -76,6 +78,7 @@ impl Orchestrator {
         let mut commitments_map = BTreeMap::new();
 
         // pick a threshold of members at random
+        // TODO: AT RANDOM!
         let threshold_of_members = self
             .committee_cfg
             .members
