@@ -10,9 +10,15 @@ To use a zkapp, provide a correct proof of execution using [snarkjs](https://git
 
 ## Usage
 
-### Requirements
+### Installation
 
-We build on top of the well-known [circom](https://github.com/iden3/circom)/[snarkjs](https://github.com/iden3/snarkjs) stack. On top that, you'll need your own Bitcoin node/wallet. This application will perform queries to your node/wallet in order to fund your zkapp transactions.
+### Circom/snarkjs
+
+We build on top of the well-known [circom](https://github.com/iden3/circom)/[snarkjs](https://github.com/iden3/snarkjs) stack. 
+
+### Bitcoin wallet
+
+On top that, you'll need your own Bitcoin node/wallet. This application will perform queries to your node/wallet in order to fund your zkapp transactions.
 
 All the following commands expects the following environment variables to be set so that it can communicate with your node/wallet:
 
@@ -20,6 +26,14 @@ All the following commands expects the following environment variables to be set
 export RPC_WALLET="walletname"
 export RPC_ADDRESS="http://127.0.01:18331"
 export RPC_AUTH="username:password"
+```
+
+### zkbtc: the zkBitcoin CLI
+
+To install `zkbtc`, run the following command:
+
+```shell
+cargo install --git https://github.com/sigma0-xyz/zkbitcoin.git
 ```
 
 ### Stateless zkapps
@@ -41,7 +55,7 @@ The zkapp doesn't have to do anything with the `truncated_txid` field (although 
 You can deploy a stateless zkapp with the following command:
 
 ```shell
-cargo run -- deploy-zkapp --circom-circuit-path examples/circuit/stateless.circom --satoshi-amount 1000
+$ zkbtc deploy-zkapp --circom-circuit-path examples/circuit/stateless.circom --satoshi-amount 1000
 ```
 
 This will lock 1,000 satoshis in the zkapp and return the transaction ID of the transaction that deployed the zkapp. A stateless zkapp can be referenced by that transaction ID.
@@ -49,7 +63,7 @@ This will lock 1,000 satoshis in the zkapp and return the transaction ID of the 
 Bob can then unlock the funds from the stateless zkapp  with the following command:
 
 ```shell
-cargo run -- use-zkapp --txid "e793bdd8dfdd9912d971790a5f385ad3f1215dce97e25dbefe5449faba632836" --circom-circuit-path examples/circuit/stateless.circom --proof-inputs '{"preimage":["1"]}' --recipient-address "tb1q6nkpv2j9lxrm6h3w4skrny3thswgdcca8cx9k6"
+$ zkbtc use-zkapp --txid "e793bdd8dfdd9912d971790a5f385ad3f1215dce97e25dbefe5449faba632836" --circom-circuit-path examples/circuit/stateless.circom --proof-inputs '{"preimage":["1"]}' --recipient-address "tb1q6nkpv2j9lxrm6h3w4skrny3thswgdcca8cx9k6"
 ```
 
 ### Stateful zkapps
@@ -74,13 +88,13 @@ component main{public [prev_state, truncated_txid, amount_out, amount_in]} = Mai
 You can deploy a stateful zkapp with the following command:
 
 ```shell
-cargo run -- deploy-zkapp --circom-circuit-path examples/circuit/stateful.circom --initial-state "1" --satoshi-amount 1000     
+$ zkbtc deploy-zkapp --circom-circuit-path examples/circuit/stateful.circom --initial-state "1" --satoshi-amount 1000     
 ```
 
 You can use a stateful zkapps with the following command:
 
 ```shell
-cargo run -- use-zkapp --circom-circuit-path examples/circuit/stateful.circom --proof-inputs '{"amount_in":["1000"], "amount_out":["1000"]}' --recipient-address "tb1q6vjawwska63qxf77rrm5uwqev0ma8as8d0mkrt" --txid "76763d6130ee460ede2739e0f38ea4d61cc940b00af5eab83e5afb0fcc837b91"
+$ zkbtc use-zkapp --circom-circuit-path examples/circuit/stateful.circom --proof-inputs '{"amount_in":["1000"], "amount_out":["1000"]}' --recipient-address "tb1q6vjawwska63qxf77rrm5uwqev0ma8as8d0mkrt" --txid "76763d6130ee460ede2739e0f38ea4d61cc940b00af5eab83e5afb0fcc837b91"
 ```
 
 specifying the following inputs:
