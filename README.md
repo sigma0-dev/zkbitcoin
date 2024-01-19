@@ -38,6 +38,8 @@ cargo install --git https://github.com/sigma0-xyz/zkbitcoin.git
 
 ## Usage
 
+There are two types of zkapps: [stateless](#stateless-zkapps) and [stateful](#stateful-zkapps).
+
 ### Stateless zkapps
 
 A stateless zkapp is single-use, and the bitcoin it locks can be redeemed by anyone who can provide a proof of correct execution. An example of a stateless zkapp is in [`examples/circuit/stateless.circom`](examples/circuit/stateless.circom) (which releases funds to anyone who can find the preimage of a hash function). 
