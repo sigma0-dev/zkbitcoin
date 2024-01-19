@@ -25,25 +25,28 @@ export RPC_AUTH="username:password"
 ### Stateless zkapps
 
 A stateless zkapp is single-use, and the bitcoin it locks can be redeemed by anyone who can provide a proof of correct execution. An example of a stateless zkapp is in [`examples/circuit/stateless.circom`](examples/circuit/stateless.circom) (which releases funds to anyone who can find the preimage of a hash function). 
-A stateless zkapp always contains one public input that authenticates the transaction that spends it:
+A stateless zkapp must always contains one public input that authenticates the transaction that spends it:
 
 ```circom
 // circom code
 template Main() {
     signal input truncated_txid;
+    // TRUNCATED...
+}
+component main{public [truncated_txid]} = Main();
 ```
 
-The zkapp does not have to do anything with this (although it can if it wants to).
+The zkapp doesn't have to do anything with the `truncated_txid` field (although it can if it wants to).
 
-Alice can deploy such a stateless zkapp with the following command:
+You can deploy a stateless zkapp with the following command:
 
 ```shell
 cargo run -- deploy-zkapp --circom-circuit-path examples/circuit/stateless.circom --satoshi-amount 1000
 ```
 
-This will lock 1,000 satoshis in the zkapp and return the transaction ID of the transaction that deployed the zkapp. A stateless zkapp can be referenced by that transaction ID, which handily also contains an output authenticating the compiled smart contract (more specifically, an `OP_RETURN` output of the verifier key).
+This will lock 1,000 satoshis in the zkapp and return the transaction ID of the transaction that deployed the zkapp. A stateless zkapp can be referenced by that transaction ID.
 
-Bob can then unlock the funds from the stateless zkapp (by specifying its transaction ID) with the following command:
+Bob can then unlock the funds from the stateless zkapp  with the following command:
 
 ```shell
 cargo run -- use-zkapp --txid "e793bdd8dfdd9912d971790a5f385ad3f1215dce97e25dbefe5449faba632836" --circom-circuit-path examples/circuit/stateless.circom --proof-inputs '{"preimage":["1"]}' --recipient-address "tb1q6nkpv2j9lxrm6h3w4skrny3thswgdcca8cx9k6"
@@ -51,26 +54,30 @@ cargo run -- use-zkapp --txid "e793bdd8dfdd9912d971790a5f385ad3f1215dce97e25dbef
 
 ### Stateful zkapps
 
-A stateful zkapp is a zkapp that can be updated without consuming the zkapp (unlike stateless zkapps). 
+A stateful zkapp is a zkapp that has a state, and which state can be updated without consuming the zkapp.
 
-An example of a stateful zkapp is in [`examples/circuit/stateful.circom`](examples/circuit/stateful.circom). A stateful zkapp always contains a number of additional public inputs, allowing an execution to authenticate the zkapp state transition, as well as the amounts being withdrawn and deposited:
+An example of a stateful zkapp is in [`examples/circuit/stateful.circom`](examples/circuit/stateful.circom). A stateful zkapp must always contains a number of additional public inputs, allowing an execution to authenticate the zkapp state transition, as well as the amounts being withdrawn and deposited:
 
 ```circom
+// circom code
 template Main() {
     signal output new_state;
     signal input prev_state;
     signal input truncated_txid; // this should not affect output
     signal input amount_out;
     signal input amount_in;
+    // TRUNCATED...
+}
+component main{public [prev_state, truncated_txid, amount_out, amount_in]} = Main();
 ```
 
-Alice can deploy a stateful zkapp with the following command:
+You can deploy a stateful zkapp with the following command:
 
 ```shell
 cargo run -- deploy-zkapp --circom-circuit-path examples/circuit/stateful.circom --initial-state "1" --satoshi-amount 1000     
 ```
 
-Bob can then use the stateful zkapps with the following command:
+You can use a stateful zkapps with the following command:
 
 ```shell
 cargo run -- use-zkapp --circom-circuit-path examples/circuit/stateful.circom --proof-inputs '{"amount_in":["1000"], "amount_out":["1000"]}' --recipient-address "tb1q6vjawwska63qxf77rrm5uwqev0ma8as8d0mkrt" --txid "76763d6130ee460ede2739e0f38ea4d61cc940b00af5eab83e5afb0fcc837b91"
