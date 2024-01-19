@@ -102,7 +102,7 @@ cargo run --bin cli -- generate-committee --num 3 --threshold 2 --output-dir tes
 RUST_LOG=debug cargo run -- start-committee-node --key-path examples/committee/key-0.json --publickey-package-path examples/committee/publickey-package.json --address "127.0.0.1:8891"
 ```
 
-### Start an orchestrator/coordinator?
+### Start an orchestrator/coordinator
 
 ```shell
 RUST_LOG=debug cargo run  -- start-orchestrator --threshold 2 --publickey-package-path examples/committee/publickey-package.json --committee-cfg-path examples/committee/committee-cfg.json
@@ -115,3 +115,39 @@ curl -X POST http://127.0.0.1:8888 -H 'Content-Type: application/json' -d '{"jso
 ```
 
 or with the unlock funds CLI command.
+
+### Minimal setup for a node
+
+* setup a server somewhere
+  * the digital ocean regular $12/month is the minimal requirement (2GB of memory)
+* ssh into it
+* install essential tools 
+  * `sudo apt install build-essential pkg-config`
+* install rustup (https://rustup.rs/) and proceed with default installation
+  * `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
+  * you might have to restart your shell or do `source "$HOME/.cargo/env"`
+* install snarkjs (https://github.com/iden3/snarkjs)
+  * `apt install nodejs npm`
+  * `npm install -g snarkjs@latest`
+* setup nginx () to expose our node to the internet
+  * `sudo apt install nginx`
+  * `sudo nano /etc/nginx/sites-available/mpc-node.conf`
+  * with the following content:
+    ```
+    server {
+        listen 18332 default_server;
+        listen [::]:18332 default_server;
+
+        server_name _;
+
+        location / {
+            proxy_pass http://127.0.0.1:8891;
+        }
+    }
+    ```
+    * `sudo ln -s /etc/nginx/sites-available/mpc-node.conf /etc/nginx/sites-enabled/mpc-node.conf`
+    * `sudo nginx -t` <-- test if the config is ok
+    * `sudo systemctl restart nginx`
+* `git clone https://github.com/sigma0-xyz/zkbitcoin`
+* `cd zkbitcoin`
+* `RUST_LOG=debug cargo run -- start-committee-node --key-path examples/committee/key-0.json --publickey-package-path examples/committee/publickey-package.json --address "127.0.0.1:8891"`
