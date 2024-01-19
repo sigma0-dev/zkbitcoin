@@ -307,6 +307,7 @@ impl BobRequest {
         for (input_idx, input) in tx.input.iter().enumerate() {
             let (_, tx, confirmations) =
                 get_transaction(rpc_ctx, input.previous_output.txid).await?;
+            // TODO: this is not useful as the transaction itself has received enough confirmation at this point
             ensure!(
                 confirmations >= MINIMUM_CONFIRMATIONS,
                 "one of the input ({}) is not confirmed yet",

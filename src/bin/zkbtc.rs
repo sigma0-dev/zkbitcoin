@@ -27,8 +27,8 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Alice can use this to deploy a circuit.
-    DeployTransaction {
+    /// Deploy a zkapp on Bitcoin.
+    DeployZkapp {
         /// The wallet name of the RPC full node.
         #[arg(env = "RPC_WALLET")]
         wallet: Option<String>,
@@ -54,8 +54,8 @@ enum Commands {
         satoshi_amount: u64,
     },
 
-    /// Bob can use this to unlock funds from a smart contract.
-    UnlockFundsRequest {
+    /// Use a zkapp on Bitcoin.
+    UseZkapp {
         /// The wallet name of the RPC full node.
         #[arg(env = "RPC_WALLET")]
         wallet: Option<String>,
@@ -112,9 +112,11 @@ enum Commands {
         #[arg(short, long)]
         address: Option<String>,
 
+        /// The path to the node's key package.
         #[arg(short, long)]
         key_path: String,
 
+        /// The path to the MPC committee public key package.
         #[arg(short, long)]
         publickey_package_path: String,
     },
@@ -148,7 +150,7 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
     match &cli.command {
         // Alice's command
-        Commands::DeployTransaction {
+        Commands::DeployZkapp {
             wallet,
             address,
             auth,
@@ -223,7 +225,7 @@ async fn main() -> Result<()> {
         }
 
         // Bob's command
-        Commands::UnlockFundsRequest {
+        Commands::UseZkapp {
             wallet,
             address,
             auth,

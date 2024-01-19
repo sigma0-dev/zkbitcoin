@@ -43,7 +43,7 @@ server {
 ### Generate committee with trusted dealer
 
 ```shell
-cargo run --bin cli -- generate-committee --num 3 --threshold 2 --output-dir tests/
+cargo run -- generate-committee --num 3 --threshold 2 --output-dir tests/
 ```
 
 ### Start a committee node 
