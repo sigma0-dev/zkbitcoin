@@ -38,6 +38,37 @@ To install `zkbtc`, run the following command:
 cargo install --git https://github.com/sigma0-xyz/zkbitcoin.git
 ```
 
+## Run a node with Docker
+
+If you're using the DigitalOcean Docker droplet, you need to open the port first:
+
+```shell
+sudo ufw allow 8891
+```
+
+1. Pull the image:
+
+```shell
+docker pull imikushin/zkbitcoin
+```
+
+2. Create the keys:
+
+```shell
+mkdir /keys
+vi /keys/key.json
+vi /keys/publickey-package.json
+```
+
+3. Run the node
+
+```shell
+docker run -d -v /keys:/keys --name zkbtc-node --pull=never -p 8891:8891 imikushin/zkbitcoin \
+  zkbtc start-committee-node --key-path=/keys/key.json \
+  --publickey-package-path=/keys/publickey-package.json \
+  --address=0.0.0.0:8891
+```
+
 ## Usage
 
 There are two types of zkapps: [stateless](#stateless-zkapps) and [stateful](#stateful-zkapps).
