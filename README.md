@@ -110,7 +110,7 @@ specifying the following inputs:
 
 Other inputs will be automatically filled in (for example, it will use the zkapp's state as `prev_state` input).
 
-## Run an MPC committee node with Docker
+## Run an MPC node with Docker
 
 If you're using the DigitalOcean Docker droplet (or any Linux server protected with UFW), you need to open the port first:
 
@@ -164,6 +164,10 @@ The node is now running in the background and listening on port 8891, and you ca
 ```shell
 nc -zv ${SERVER_IP} 8891
 ```
+
+### Updating the MPC node software
+
+
 
 ## Tell me more
 
