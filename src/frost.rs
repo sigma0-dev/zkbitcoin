@@ -259,8 +259,6 @@ pub fn sign_transaction_frost(
     let signature = sign(key_packages, pubkey_package, msg.as_ref()).unwrap();
     println!("- signature: {:#?}", signature);
 
-    // TODO use FROST signature as a Bitcoin signature
-    // TODO it may be 02 or 03, so make sure it's okay to truncate it like this
     secp256k1::schnorr::Signature::from_slice(signature.serialize()[1..].as_ref()).unwrap()
 }
 

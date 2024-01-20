@@ -91,12 +91,7 @@ impl Orchestrator {
         // TODO: what if we get a timeout or can't meet that threshold? loop? send to more members?
         for (member_id, member) in &threshold_of_members {
             // send json RPC request
-            let rpc_ctx = RpcCtx {
-                version: Some("2.0"),
-                wallet: None,
-                address: Some(member.address.clone()),
-                auth: None,
-            };
+            let rpc_ctx = RpcCtx::new(Some("2.0"), None, Some(member.address.clone()), None, None);
             let resp = json_rpc_request(
                 &rpc_ctx,
                 "round_1_signing",
@@ -137,12 +132,7 @@ impl Orchestrator {
         // TODO: what if we get a timeout or can't meet that threshold? loop? send to more members?
         for (member_id, member) in &threshold_of_members {
             // send json RPC request
-            let rpc_ctx = RpcCtx {
-                version: Some("2.0"),
-                wallet: None,
-                address: Some(member.address.clone()),
-                auth: None,
-            };
+            let rpc_ctx = RpcCtx::new(Some("2.0"), None, Some(member.address.clone()), None, None);
             let resp = json_rpc_request(
                 &rpc_ctx,
                 "round_2_signing",

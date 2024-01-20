@@ -10,7 +10,6 @@ use reqwest::{
     header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE},
     Client,
 };
-use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
 use crate::constants::BITCOIN_JSON_RPC_VERSION;
@@ -28,6 +27,7 @@ pub struct RpcCtx {
     pub wallet: Option<String>,
     pub address: Option<String>,
     pub auth: Option<String>,
+    pub timeout: Duration,
 }
 
 impl RpcCtx {
@@ -36,12 +36,14 @@ impl RpcCtx {
         wallet: Option<String>,
         address: Option<String>,
         auth: Option<String>,
+        timeout: Option<Duration>,
     ) -> Self {
         let ctx = Self {
             version,
             wallet,
             address,
             auth,
+            timeout: timeout.unwrap_or(Duration::from_secs(JSON_RPC_TIMEOUT)),
         };
 
         info!("- using RPC node at address {}", ctx.address());
@@ -84,12 +86,13 @@ impl RpcCtx {
         let auth = std::env::var("BITCOIN_JSON_RPC_AUTH").unwrap_or("root:hellohello".to_string());
         let wallet = std::env::var("BITCOIN_JSON_RPC_WALLET").unwrap_or("mywallet".to_string());
 
-        Self {
-            version: Some(BITCOIN_JSON_RPC_VERSION),
-            wallet: Some(wallet),
-            address: Some(endpoint),
-            auth: Some(auth),
-        }
+        Self::new(
+            Some(BITCOIN_JSON_RPC_VERSION),
+            Some(wallet),
+            Some(endpoint),
+            Some(auth),
+            None,
+        )
     }
 }
 
@@ -127,7 +130,7 @@ pub async fn json_rpc_request<'a>(
 
     let client = Client::builder()
         .default_headers(headers)
-        .timeout(Duration::from_secs(JSON_RPC_TIMEOUT))
+        .timeout(ctx.timeout)
         .build()?;
 
     let endpoint = ctx.address();
@@ -180,7 +183,6 @@ pub async fn fund_raw_transaction<'a>(
     .await
     .context("fundrawtransaction error")?;
 
-    // TODO: get rid of unwrap in here
     let response: bitcoincore_rpc::jsonrpc::Response = serde_json::from_str(&response)?;
     let parsed: bitcoincore_rpc::json::FundRawTransactionResult = response.result()?;
     let tx: Transaction = bitcoin::consensus::encode::deserialize(&parsed.hex)?;
@@ -208,7 +210,6 @@ pub async fn sign_transaction<'a>(
     .await
     .context("signrawtransactionwithwallet error")?;
 
-    // TODO: get rid of unwrap in here
     let response: bitcoincore_rpc::jsonrpc::Response = serde_json::from_str(&response)?;
     let parsed: bitcoincore_rpc::json::SignRawTransactionResult = response.result()?;
     let tx: Transaction = bitcoin::consensus::encode::deserialize(&parsed.hex)?;
@@ -303,6 +304,8 @@ pub async fn scan_txout_set<'a>(
     .await
     .context("scantxoutset error")?;
 
+    // TODO: this can return "Scan already in progress" in which case we might want to wait for it to finish
+
     let response: bitcoincore_rpc::jsonrpc::Response = serde_json::from_str(&response)?;
     let result: bitcoincore_rpc::json::ScanTxOutResult = response.result()?;
 
@@ -311,15 +314,25 @@ pub async fn scan_txout_set<'a>(
 
 #[cfg(test)]
 mod tests {
+    use crate::bob_request::fetch_smart_contract;
+
     use super::*;
 
     #[tokio::test]
     async fn get_zkapps() {
-        scan_txout_set(
-            &RpcCtx::for_testing(),
-            "tb1q6nkpv2j9lxrm6h3w4skrny3thswgdcca8cx9k6",
+        let mut rpc_ctx = RpcCtx::for_testing();
+        rpc_ctx.timeout = Duration::from_secs(20); // scan takes 13s from what I can see
+        let res = scan_txout_set(
+            &rpc_ctx,
+            "tb1p5sfstsnt9akcqf9zkm6ulke8ujwakjd8kdk5krws2th4ds238meqq4awtv",
         )
         .await
         .unwrap();
+        for unspent in &res.unspents {
+            let txid = unspent.txid;
+            if let Ok(smart_contract) = fetch_smart_contract(&rpc_ctx, txid).await {
+                println!("{:?}", smart_contract);
+            }
+        }
     }
 }

@@ -171,7 +171,6 @@ impl BobRequest {
 
             let mut outputs = vec![
                 // first output is to zkBitcoinFund
-                // TODO: we need to create a taproot address here
                 serde_json::json!({
                     fee_address.to_string(): fee,
                 }),
@@ -488,12 +487,7 @@ pub struct BobResponse {
 }
 
 pub async fn send_bob_request(address: &str, request: BobRequest) -> Result<BobResponse> {
-    let ctx = RpcCtx {
-        version: Some("2.0"),
-        wallet: None,
-        address: Some(address.to_string()),
-        auth: None,
-    };
+    let ctx = RpcCtx::new(Some("2.0"), None, Some(address.to_string()), None, None);
 
     let resp = json_rpc_request(
         &ctx,
@@ -503,7 +497,6 @@ pub async fn send_bob_request(address: &str, request: BobRequest) -> Result<BobR
     .await
     .context("couldn't send unlock_funds request to orchestrator")?;
 
-    // TODO: get rid of unwrap in here
     let response: bitcoincore_rpc::jsonrpc::Response =
         serde_json::from_str(&resp).context("couldn't deserialize orchestrator's response")?;
     let bob_response: BobResponse = response.result().context("bob request failed")?;

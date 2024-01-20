@@ -163,6 +163,7 @@ async fn main() -> Result<()> {
                 wallet.clone(),
                 address.clone(),
                 auth.clone(),
+                None,
             );
 
             let circom_circuit_path = env::current_dir()?.join(circom_circuit_path);
@@ -240,6 +241,7 @@ async fn main() -> Result<()> {
                 wallet.clone(),
                 address.clone(),
                 auth.clone(),
+                None,
             );
 
             // parse circom circuit path
