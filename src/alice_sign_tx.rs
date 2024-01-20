@@ -83,8 +83,9 @@ pub async fn generate_and_broadcast_transaction(
 #[cfg(test)]
 mod tests {
     use bitcoincore_rpc::RpcApi;
+    use itertools::Itertools;
 
-    use crate::json_rpc_stuff::{json_rpc_request, JSON_RPC_ENDPOINT};
+    use crate::json_rpc_stuff::json_rpc_request;
 
     use super::*;
 
@@ -111,15 +112,18 @@ mod tests {
         // you can run the test with `RUST_LOG=trace`
         env_logger::init();
 
-        let wallet = Some("mywallet".to_string());
-        let url = match &wallet {
-            Some(w) => format!("{}/wallet/{}", JSON_RPC_ENDPOINT, w),
-            None => JSON_RPC_ENDPOINT.to_string(),
-        };
-        println!("now trying with bitcoin core rpc:");
+        let our_rpc = RpcCtx::for_testing();
+        let (user, pass) = our_rpc
+            .auth()
+            .unwrap()
+            .split('.')
+            .map(str::to_string)
+            .collect_tuple()
+            .expect("auth was incorrectly passed (expected `user:pw`)");
+
         let rpc = bitcoincore_rpc::Client::new(
-            &url,
-            bitcoincore_rpc::Auth::UserPass("root".to_string(), "hellohello".to_string()),
+            our_rpc.address(),
+            bitcoincore_rpc::Auth::UserPass(user, pass),
         )
         .unwrap();
         let tx = "0200000000010001e8030000000000004076a914000000000000000000000000000000000000000088ac6a200000000000000000000000000000000000000000000000000000000000000000040000000000000000";

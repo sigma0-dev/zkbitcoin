@@ -10,12 +10,13 @@ use reqwest::{
     header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE},
     Client,
 };
+use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
 use crate::constants::BITCOIN_JSON_RPC_VERSION;
 
 /// Timeout (in seconds) for json rpc requests.
-const JSON_RPC_TIMEOUT: u64 = 5;
+const JSON_RPC_TIMEOUT: u64 = 10;
 
 //
 // Context
@@ -79,11 +80,15 @@ impl RpcCtx {
     }
 
     pub fn for_testing() -> Self {
+        let endpoint = std::env::var("BITCOIN_JSON_RPC_ENDPOINT").unwrap();
+        let auth = std::env::var("BITCOIN_JSON_RPC_AUTH").unwrap_or("root:hellohello".to_string());
+        let wallet = std::env::var("BITCOIN_JSON_RPC_WALLET").unwrap_or("mywallet".to_string());
+
         Self {
             version: Some(BITCOIN_JSON_RPC_VERSION),
-            wallet: Some("mywallet".to_string()),
-            address: Some(JSON_RPC_ENDPOINT.to_string()),
-            auth: Some(JSON_RPC_AUTH.to_string()),
+            wallet: Some(wallet),
+            address: Some(endpoint),
+            auth: Some(auth),
         }
     }
 }
@@ -91,13 +96,6 @@ impl RpcCtx {
 //
 // Main JSON RPC request function
 //
-
-/// The endpoint for our bitcoind full node.
-pub const JSON_RPC_ENDPOINT: &str = "http://146.190.33.39:18331";
-
-/// The RPC authentication our bitcoind node uses (user + password).
-// TODO: obviously we're using poor's man authentication :))
-const JSON_RPC_AUTH: &str = "root:hellohello";
 
 /// Implements a JSON RPC request to the bitcoind node.
 /// Following the [JSON RPC 1.0 spec](https://www.jsonrpc.org/specification_v1).
@@ -285,4 +283,43 @@ pub async fn get_transaction<'a>(ctx: &RpcCtx, txid: Txid) -> Result<(String, Tr
     let tx_hex = hex::encode(&parsed.hex);
 
     Ok((tx_hex, tx, parsed.info.confirmations as usize))
+}
+
+pub async fn scan_txout_set<'a>(
+    ctx: &RpcCtx,
+    address: &str,
+) -> Result<bitcoincore_rpc::json::ScanTxOutResult> {
+    let req = format!("addr({address})");
+    let response = json_rpc_request(
+        ctx,
+        "scantxoutset",
+        &[
+            serde_json::value::to_raw_value(&serde_json::Value::String("start".to_string()))?,
+            serde_json::value::to_raw_value(&serde_json::Value::Array(vec![
+                serde_json::Value::String(req),
+            ]))?,
+        ],
+    )
+    .await
+    .context("scantxoutset error")?;
+
+    let response: bitcoincore_rpc::jsonrpc::Response = serde_json::from_str(&response)?;
+    let result: bitcoincore_rpc::json::ScanTxOutResult = response.result()?;
+
+    Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn get_zkapps() {
+        scan_txout_set(
+            &RpcCtx::for_testing(),
+            "tb1q6nkpv2j9lxrm6h3w4skrny3thswgdcca8cx9k6",
+        )
+        .await
+        .unwrap();
+    }
 }
