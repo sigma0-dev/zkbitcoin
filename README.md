@@ -133,14 +133,7 @@ docker create --restart=always -v keys:/keys --name zkbtc-node -p 8891:8891 imik
   --address=0.0.0.0:8891
 ```
 
-3. Create the keys and copy them into the `keys` volume:
-
-```shell
-vi ./key.json
-vi ./publickey-package.json
-```
-
-Copy into the `keys` Docker volume:
+3. Create the keys (`./key.json`, `./publickey-package.json`) and copy them into the `keys` volume:
 
 ```shell
 docker cp ./key.json zkbtc-node:/keys/key.json
