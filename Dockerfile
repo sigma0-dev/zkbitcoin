@@ -17,6 +17,5 @@ COPY --link --from=build /app/target/release/zkbtc /usr/local/bin/
 COPY --link ./examples ./examples
 
 WORKDIR /app
-EXPOSE 8891
 
 ENV RUST_LOG=debug

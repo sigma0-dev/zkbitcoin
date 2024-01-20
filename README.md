@@ -38,37 +38,6 @@ To install `zkbtc`, run the following command:
 cargo install --git https://github.com/sigma0-xyz/zkbitcoin.git
 ```
 
-## Run a node with Docker
-
-If you're using the DigitalOcean Docker droplet, you need to open the port first:
-
-```shell
-sudo ufw allow 8891
-```
-
-1. Pull the image:
-
-```shell
-docker pull imikushin/zkbitcoin
-```
-
-2. Create the keys:
-
-```shell
-mkdir /keys
-vi /keys/key.json
-vi /keys/publickey-package.json
-```
-
-3. Run the node
-
-```shell
-docker run -d -v /keys:/keys --name zkbtc-node --pull=never -p 8891:8891 imikushin/zkbitcoin \
-  zkbtc start-committee-node --key-path=/keys/key.json \
-  --publickey-package-path=/keys/publickey-package.json \
-  --address=0.0.0.0:8891
-```
-
 ## Usage
 
 There are two types of zkapps: [stateless](#stateless-zkapps) and [stateful](#stateful-zkapps).
@@ -140,6 +109,68 @@ specifying the following inputs:
 * `amount_in`: amount being deposited
 
 Other inputs will be automatically filled in (for example, it will use the zkapp's state as `prev_state` input).
+
+## Run an MPC committee node with Docker
+
+If you're using the DigitalOcean Docker droplet (or any Linux server protected with UFW), you need to open the port first:
+
+```shell
+sudo ufw allow 8891
+```
+
+1. Fetch the image:
+
+```shell
+docker pull imikushin/zkbitcoin
+```
+
+2. Create the zkBitcoin node container (creates the `keys` Docker volume if you don't already have it):
+
+```shell
+docker create --restart=always -v keys:/keys --name zkbtc-node -p 8891:8891 imikushin/zkbitcoin \ 
+  zkbtc start-committee-node \
+  --key-path=/keys/key.json --publickey-package-path=/keys/publickey-package.json \
+  --address=0.0.0.0:8891
+```
+
+3. Create the keys and copy them into the `keys` volume:
+
+```shell
+vi ./key.json
+vi ./publickey-package.json
+```
+
+Copy into the `keys` Docker volume:
+
+```shell
+docker cp ./key.json zkbtc-node:/keys/key.json
+docker cp ./publickey-package.json zkbtc-node:/keys/publickey-package.json
+```
+
+4. Start the node:
+
+```shell
+docker start zkbtc-node
+```
+
+You should now see the container show up in the printout from running the `docker ps -a` shell command:
+
+```
+CONTAINER ID   IMAGE                 COMMAND                  CREATED             STATUS          PORTS                    NAMES
+b3d2e7c028ce   imikushin/zkbitcoin   "zkbtc start-committ…"   About an hour ago   Up 55 minutes   0.0.0.0:8891->8891/tcp   zkbtc-node
+```
+
+Follow its logs with `docker logs -f zkbtc-node`:
+```
+[2024-01-20T22:28:35Z INFO  zkbtc] - zkbitcoin_address: tb1p5sfstsnt9akcqf9zkm6ulke8ujwakjd8kdk5krws2th4ds238meqq4awtv
+[2024-01-20T22:28:35Z INFO  zkbtc] - zkbitcoin_fund_address: tb1pv7auuumlqm9kehlep4y83xcthyma5yvprvlx39k7xvveh48976sq7e6sr5
+[2024-01-20T22:28:35Z INFO  zkbitcoin::committee::node] - starting node for identifier Identifier("0000000000000000000000000000000000000000000000000000000000000001") at address http://0.0.0.0:8891
+```
+
+The node is now running in the background and listening on port 8891, and you can verify if that's the case (from your local machine):
+```shell
+nc -zv ${SERVER_IP} 8891
+```
 
 ## Tell me more
 
