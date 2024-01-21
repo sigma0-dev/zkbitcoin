@@ -127,7 +127,7 @@ docker pull imikushin/zkbitcoin
 2. Create the zkBitcoin node container (creates the `keys` Docker volume if you don't already have it):
 
 ```shell
-docker create --restart=always -v keys:/keys --name zkbtc-node -p 8891:8891 imikushin/zkbitcoin \ 
+docker create --restart=always -v keys:/keys --name zkbtc-node -p 8891:8891 imikushin/zkbitcoin \
   zkbtc start-committee-node \
   --key-path=/keys/key.json --publickey-package-path=/keys/publickey-package.json \
   --address=0.0.0.0:8891
@@ -167,7 +167,12 @@ nc -zv ${SERVER_IP} 8891
 
 ### Updating the MPC node software
 
+```shell
+docker pull imikushin/zkbitcoin
+docker rm -f zkbtc-node
+```
 
+Now re-run steps 2 and 4 from above: create the container and then start it (the `keys` volume is re-used).
 
 ## Tell me more
 
