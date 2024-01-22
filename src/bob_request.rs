@@ -518,6 +518,26 @@ pub struct SmartContract {
     pub vout_of_zkbitcoin_utxo: u32,
 }
 
+impl std::fmt::Display for SmartContract {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let &SmartContract {
+            txid,
+            locked_value,
+            vk_hash,
+            state,
+            vout_of_zkbitcoin_utxo,
+        } = &self;
+
+        write!(
+            f,
+            "- txid: {txid} (output #{vout}), locked_value: {locked_value}, vk_hash: {vk_hash}, {state}",
+            vk_hash=hex::encode(vk_hash),
+            vout=vout_of_zkbitcoin_utxo,
+            state=state.as_ref().map(|s| format!("state: {s}")).unwrap_or("stateless".to_string())
+        )
+    }
+}
+
 impl SmartContract {
     /// Returns true if the smart contract is stateless.
     fn is_stateless(&self) -> bool {

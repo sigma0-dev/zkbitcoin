@@ -7,13 +7,15 @@ use log::info;
 use tempdir::TempDir;
 use zkbitcoin::{
     alice_sign_tx::generate_and_broadcast_transaction,
-    bob_request::{send_bob_request, BobRequest},
+    bob_request::{fetch_smart_contract, send_bob_request, BobRequest},
     committee::orchestrator::{CommitteeConfig, Member},
     constants::{
         BITCOIN_JSON_RPC_VERSION, ORCHESTRATOR_ADDRESS, ZKBITCOIN_FEE_PUBKEY, ZKBITCOIN_PUBKEY,
     },
     frost, get_network,
-    json_rpc_stuff::{send_raw_transaction, sign_transaction, RpcCtx, TransactionOrHex},
+    json_rpc_stuff::{
+        scan_txout_set, send_raw_transaction, sign_transaction, RpcCtx, TransactionOrHex,
+    },
     snarkjs::{self, CompilationResult},
     taproot_addr_from,
 };
@@ -49,7 +51,7 @@ enum Commands {
         #[arg(short, long)]
         initial_state: Option<String>,
 
-        /// The amount in satoshis to send to the smart contract.
+        /// The amount in satoshis to send to the zkapp.
         #[arg(short, long)]
         satoshi_amount: u64,
     },
@@ -72,7 +74,7 @@ enum Commands {
         #[arg(env = "ENDPOINT")]
         orchestrator_address: Option<String>,
 
-        /// The transaction ID that deployed the smart contract.
+        /// The transaction ID that deployed the zkapp.
         #[arg(short, long)]
         txid: String,
 
@@ -88,6 +90,40 @@ enum Commands {
         /// For stateful zkapps, we expect at least `amount_in` and `amount_out`.
         #[arg(short, long)]
         proof_inputs: Option<String>,
+    },
+
+    /// Check the status of a zkapp on Bitcoin.
+    GetZkapp {
+        /// The transaction ID that deployed the zkapp.
+        #[arg(required = true)]
+        txid: String,
+
+        /// The wallet name of the RPC full node.
+        #[arg(env = "RPC_WALLET")]
+        wallet: Option<String>,
+
+        /// The `http(s)://address:port`` of the RPC full node.
+        #[arg(env = "RPC_ADDRESS")]
+        address: Option<String>,
+
+        /// The `user:password`` of the RPC full node.
+        #[arg(env = "RPC_AUTH")]
+        auth: Option<String>,
+    },
+
+    /// Get list of deployed zkapps on Bitcoin.
+    ListZkapps {
+        /// The wallet name of the RPC full node.
+        #[arg(env = "RPC_WALLET")]
+        wallet: Option<String>,
+
+        /// The `http(s)://address:port`` of the RPC full node.
+        #[arg(env = "RPC_ADDRESS")]
+        address: Option<String>,
+
+        /// The `user:password`` of the RPC full node.
+        #[arg(env = "RPC_AUTH")]
+        auth: Option<String>,
     },
 
     /// Generates an MPC committee via a trusted dealer.
@@ -294,6 +330,49 @@ async fn main() -> Result<()> {
             // print useful msg
             info!("- txid broadcast to the network: {txid}");
             info!("- on an explorer: https://blockstream.info/testnet/tx/{txid}");
+        }
+
+        Commands::GetZkapp {
+            wallet,
+            address,
+            auth,
+            txid,
+        } => {
+            let ctx = RpcCtx::new(
+                Some(BITCOIN_JSON_RPC_VERSION),
+                wallet.clone(),
+                address.clone(),
+                auth.clone(),
+                None,
+            );
+
+            // extract smart contract
+            let zkapp = fetch_smart_contract(&ctx, Txid::from_str(txid)?).await?;
+
+            println!("{zkapp}");
+        }
+
+        Commands::ListZkapps {
+            wallet,
+            address,
+            auth,
+        } => {
+            let mut rpc_ctx = RpcCtx::new(
+                Some(BITCOIN_JSON_RPC_VERSION),
+                wallet.clone(),
+                address.clone(),
+                auth.clone(),
+                None,
+            );
+            rpc_ctx.timeout = std::time::Duration::from_secs(20); // scan takes 13s from what I can see
+            let zkbitcoin_addr = taproot_addr_from(ZKBITCOIN_PUBKEY).unwrap();
+            let res = scan_txout_set(&rpc_ctx, &zkbitcoin_addr.to_string()).await?;
+            for unspent in &res.unspents {
+                let txid = unspent.txid;
+                if let Ok(zkapp) = fetch_smart_contract(&rpc_ctx, txid).await {
+                    println!("{zkapp}");
+                }
+            }
         }
 
         Commands::GenerateCommittee {

@@ -110,6 +110,22 @@ specifying the following inputs:
 
 Other inputs will be automatically filled in (for example, it will use the zkapp's state as `prev_state` input).
 
+## Get information about a zkapp
+
+You can retrieve information about a specific zkapp by running the following command with the zkapp's transaction id:
+
+```shell
+$ zkbtc get-zkapp 7f08eeb5a4cba9bed161ba54bb28db4fc6ce51273e48d40969d5d89fdab61770
+```
+
+## List all deployed zkapps
+
+You can list all currently-deployed zkapps in the following way:
+
+```shell
+$ zkbtc list-zkapps
+```
+
 ## Run an MPC node with Docker
 
 If you're using the DigitalOcean Docker droplet (or any Linux server protected with UFW), you need to open the port first:
