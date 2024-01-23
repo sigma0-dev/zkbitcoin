@@ -11,6 +11,7 @@ use bitcoin::{
     key::{TapTweak, UntweakedPublicKey},
     secp256k1, taproot, TapSighashType, Witness,
 };
+
 use frost_secp256k1_tr::Ciphersuite;
 use frost_secp256k1_tr::Group;
 use itertools::Itertools;
@@ -31,6 +32,13 @@ use crate::{
 };
 
 use super::node::{Round2Request, Round2Response};
+
+use futures::future::{join_all, try_join_all};
+use rand::seq::SliceRandom;
+use rand::thread_rng;
+use tokio::sync::Mutex;
+use tokio::time::{timeout, Duration};
+use tokio_stream::StreamExt as _;
 
 //
 // Orchestration logic
@@ -75,44 +83,81 @@ impl Orchestrator {
         // Round 1
         //
 
-        let mut commitments_map = BTreeMap::new();
+        // Round 1 - Randomly pick some members
+        let results = Arc::new(Mutex::new(vec![]));
+        let mut all_members = self.committee_cfg.members.iter().collect_vec();
 
-        // pick a threshold of members at random
-        // TODO: AT RANDOM!
-        let threshold_of_members = self
-            .committee_cfg
-            .members
-            .iter()
-            .take(self.committee_cfg.threshold)
-            .collect_vec();
+        all_members.shuffle(&mut rand::thread_rng());
+        let mut stream = tokio_stream::iter(&all_members);
 
-        // TODO: do this concurrently with async
-        // TODO: take a random sample instead of the first `threshold` members
-        // TODO: what if we get a timeout or can't meet that threshold? loop? send to more members?
-        for (member_id, member) in &threshold_of_members {
+        // Sending requests to the selected members concurrently
+        loop {
+            let (member_id, member) = match stream.next().await {
+                Some(item) => item,
+                None => break,
+            };
+            // stop now when reached enough responses
+            {
+                if results.lock().await.len() >= self.committee_cfg.threshold {}
+            }
+
             // send json RPC request
             let rpc_ctx = RpcCtx::new(Some("2.0"), None, Some(member.address.clone()), None, None);
-            let resp = json_rpc_request(
+            let round1_send_json_rpc_resp = match json_rpc_request(
                 &rpc_ctx,
                 "round_1_signing",
                 &[serde_json::value::to_raw_value(&bob_request).unwrap()],
             )
             .await
-            .context("rpc request to committee didn't work");
-            debug!("{:?}", resp);
-            let resp = resp?;
+            {
+                Ok(x) => x,
+                Err(err) => {
+                    info!("Error: member {member_id:?} in round 1 sending json rpc request: {err}");
+                    continue;
+                }
+            };
 
-            let response: bitcoincore_rpc::jsonrpc::Response = serde_json::from_str(&resp)?;
-            let resp: Round1Response = response.result()?;
+            // parse the response json rpc type
+            let round1_parse_json_rpc_response: bitcoincore_rpc::jsonrpc::Response =
+                match serde_json::from_str(&round1_send_json_rpc_resp) {
+                    Ok(x) => x,
+                    Err(err) => {
+                        info!(
+                        "Error: member {member_id:?} in round 1 parsing json rpc response: {err}"
+                    );
+                        continue;
+                    }
+                };
+
+            // parse the actual response
+            let round1_parse_actual_response: Round1Response = match round1_parse_json_rpc_response
+                .result()
+            {
+                Ok(x) => x,
+                Err(err) => {
+                    info!("Error: member {member_id:?} in round 1 parsing actual response: {err}");
+                    continue;
+                }
+            };
 
             // store the commitment
-            commitments_map.insert(**member_id, resp.commitments);
+            results.lock().await.push((
+                member_id,
+                member,
+                round1_parse_actual_response.commitments,
+            ));
         }
 
         //
         // Produce transaction and digest
         //
         let message = get_digest_to_hash(&bob_request.prev_outs, &bob_request.tx, &smart_contract)?;
+        let commitments_map: BTreeMap<_, _> = results
+            .lock()
+            .await
+            .iter()
+            .map(|(member_id, _, commitments)| (***member_id, commitments.clone()))
+            .collect();
 
         //
         // Round 2
@@ -120,6 +165,7 @@ impl Orchestrator {
 
         let mut signature_shares = BTreeMap::new();
 
+        // Preparing for round 2
         let round2_request = Round2Request {
             txid: bob_request.txid()?,
             proof_hash: bob_request.proof.hash(),
@@ -127,27 +173,30 @@ impl Orchestrator {
             message,
         };
 
-        // TODO: do this concurrently with async
-        // TODO: take a random sample instead of the first `threshold` members
-        // TODO: what if we get a timeout or can't meet that threshold? loop? send to more members?
-        for (member_id, member) in &threshold_of_members {
+        // Concurrently send round 2 requests
+        for (member_id, member, _) in results.lock().await.iter() {
             // send json RPC request
             let rpc_ctx = RpcCtx::new(Some("2.0"), None, Some(member.address.clone()), None, None);
-            let resp = json_rpc_request(
+            let round2_send_json_rpc_resp = json_rpc_request(
                 &rpc_ctx,
                 "round_2_signing",
                 &[serde_json::value::to_raw_value(&round2_request)?],
             )
             .await;
-            debug!("resp to 2nd request: {:?}", resp);
+            debug!(
+                "response to second request: {:?}",
+                round2_send_json_rpc_resp
+            );
 
-            let resp = resp.context("second rpc request to committee didn't work")?;
+            let round2_send_json_rpc_resp =
+                round2_send_json_rpc_resp.context("second rpc request to committee didn't work")?;
 
-            let response: bitcoincore_rpc::jsonrpc::Response = serde_json::from_str(&resp)?;
-            let round2_response: Round2Response = response.result()?;
+            let round2_response: bitcoincore_rpc::jsonrpc::Response =
+                serde_json::from_str(&round2_send_json_rpc_resp)?;
+            let round2_results_response: Round2Response = round2_response.result()?;
 
-            // store the commitment
-            signature_shares.insert(**member_id, round2_response.signature_share);
+            // save the commitment into signature shares
+            signature_shares.insert(***member_id, round2_results_response.signature_share);
         }
 
         //
@@ -163,7 +212,7 @@ impl Orchestrator {
                 &self.pubkey_package,
             );
             if let Some(err) = res.err() {
-                error!("error: {}", err);
+                error!("Error: {}", err);
             }
             res.context("failed to aggregate signatures")?
         };
@@ -173,7 +222,7 @@ impl Orchestrator {
             // verify using FROST
             let group_pubkey = self.pubkey_package.verifying_key();
             assert!(group_pubkey.verify(&message, &group_signature).is_ok());
-            debug!("- the signature verified locally with FROST lib");
+            debug!("- the signature is verified locally with FROST lib");
 
             // assert that the pubkey is the same
             let deserialized_pubkey =
@@ -191,16 +240,16 @@ impl Orchestrator {
                 let internal_key = UntweakedPublicKey::from(zkbitcoin_pubkey);
                 let (tweaked, _) = internal_key.tap_tweak(&secp, None);
                 let tweaked = tweaked.to_string();
-                debug!("tweaked: {}", tweaked);
+                debug!("tweaked from hardcoded: {}", tweaked);
 
                 // from FROST
                 let xone = XOnlyPublicKey::from_slice(&group_pubkey.serialize()[1..]).unwrap();
                 let (tweaked2, _) = xone.tap_tweak(&secp, None);
                 let tweaked2 = tweaked2.to_string();
-                debug!("tweaked2: {}", tweaked2);
+                debug!("tweaked2 from FROST: {}", tweaked2);
                 assert_eq!(tweaked, tweaked2);
 
-                // twaked
+                // tweaked
                 let tweaked3 =
                     frost_secp256k1_tr::Secp256K1Sha256::tweaked_public_key(group_pubkey.element());
                 let s = <frost_secp256k1_tr::Secp256K1Sha256 as Ciphersuite>::Group::serialize(
