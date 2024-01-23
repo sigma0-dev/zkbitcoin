@@ -125,7 +125,7 @@ RUST_LOG=debug cargo run -- start-committee-node --key-path examples/committee/k
 ### Start an orchestrator/coordinator
 
 ```shell
-RUST_LOG=debug cargo run  -- start-orchestrator --publickey-package-path examples/committee/publickey-package.json --committee-cfg-path examples/committee/committee-cfg.json
+RUST_LOG=debug cargo run  -- start-orchestrator --publickey-package-path examples/committee/publickey-package.json --committee-cfg-path examples/committee/committee-cfg.json --address "127.0.0.1:8891"
 ```
 
 then you can query it like so:
