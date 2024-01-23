@@ -88,64 +88,56 @@ impl Orchestrator {
         let mut all_members = self.committee_cfg.members.iter().collect_vec();
 
         all_members.shuffle(&mut rand::thread_rng());
-        let mut stream = tokio_stream::iter(&all_members);
+
+        // Take a random sample of members, up to the threshold
+        let selected_members = all_members
+            .choose_multiple(&mut rand::thread_rng(), self.committee_cfg.threshold)
+            .cloned()
+            .collect::<Vec<_>>();
+
+        let mut stream = tokio_stream::iter(selected_members);
 
         // Sending requests to the selected members concurrently
-        loop {
-            let (member_id, member) = match stream.next().await {
-                Some(item) => item,
-                None => break,
-            };
+        while let Some((member_id, member)) = stream.next().await {
             // stop now when reached enough responses
             {
-                if results.lock().await.len() >= self.committee_cfg.threshold {}
+                if results.lock().await.len() >= self.committee_cfg.threshold {
+                    break;
+                }
             }
 
             // send json RPC request
             let rpc_ctx = RpcCtx::new(Some("2.0"), None, Some(member.address.clone()), None, None);
-            let round1_send_json_rpc_resp = match json_rpc_request(
+            let round1_response = json_rpc_request(
                 &rpc_ctx,
                 "round_1_signing",
                 &[serde_json::value::to_raw_value(&bob_request).unwrap()],
             )
             .await
-            {
-                Ok(x) => x,
+            .and_then(|resp| {
+                serde_json::from_str::<bitcoincore_rpc::jsonrpc::Response>(&resp)
+                    .map_err(anyhow::Error::new)
+            })
+            .and_then(|parsed_resp| {
+                parsed_resp
+                    .result::<Round1Response>()
+                    .map_err(anyhow::Error::new)
+            });
+
+            match round1_response {
+                Ok(round1_actual_response) => {
+                    // store the commitment
+                    results.lock().await.push((
+                        member_id,
+                        member,
+                        round1_actual_response.commitments,
+                    ));
+                }
                 Err(err) => {
-                    info!("Error: member {member_id:?} in round 1 sending json rpc request: {err}");
+                    info!("Error: member {member_id:?} in round 1: {err}");
                     continue;
                 }
             };
-
-            // parse the response json rpc type
-            let round1_parse_json_rpc_response: bitcoincore_rpc::jsonrpc::Response =
-                match serde_json::from_str(&round1_send_json_rpc_resp) {
-                    Ok(x) => x,
-                    Err(err) => {
-                        info!(
-                        "Error: member {member_id:?} in round 1 parsing json rpc response: {err}"
-                    );
-                        continue;
-                    }
-                };
-
-            // parse the actual response
-            let round1_parse_actual_response: Round1Response = match round1_parse_json_rpc_response
-                .result()
-            {
-                Ok(x) => x,
-                Err(err) => {
-                    info!("Error: member {member_id:?} in round 1 parsing actual response: {err}");
-                    continue;
-                }
-            };
-
-            // store the commitment
-            results.lock().await.push((
-                member_id,
-                member,
-                round1_parse_actual_response.commitments,
-            ));
         }
 
         //
@@ -156,14 +148,13 @@ impl Orchestrator {
             .lock()
             .await
             .iter()
-            .map(|(member_id, _, commitments)| (***member_id, commitments.clone()))
+            .map(|(member_id, _, commitments)| ((*member_id).clone(), commitments.clone()))
             .collect();
 
         //
         // Round 2
         //
-
-        let mut signature_shares = BTreeMap::new();
+        let mut futures = Vec::new();
 
         // Preparing for round 2
         let round2_request = Round2Request {
@@ -175,28 +166,46 @@ impl Orchestrator {
 
         // Concurrently send round 2 requests
         for (member_id, member, _) in results.lock().await.iter() {
-            // send json RPC request
             let rpc_ctx = RpcCtx::new(Some("2.0"), None, Some(member.address.clone()), None, None);
-            let round2_send_json_rpc_resp = json_rpc_request(
-                &rpc_ctx,
-                "round_2_signing",
-                &[serde_json::value::to_raw_value(&round2_request)?],
-            )
-            .await;
-            debug!(
-                "response to second request: {:?}",
-                round2_send_json_rpc_resp
-            );
+            let round2_request_clone = round2_request.clone();
+            let member_id_clone = member_id.clone();
+            let future = async move {
+                json_rpc_request(
+                    &rpc_ctx,
+                    "round_2_signing",
+                    &[serde_json::value::to_raw_value(&round2_request_clone)?],
+                )
+                .await
+                .and_then(|response| {
+                    serde_json::from_str::<bitcoincore_rpc::jsonrpc::Response>(&response)
+                        .map_err(anyhow::Error::new)
+                })
+                .and_then(|round2_response| {
+                    round2_response
+                        .result::<Round2Response>()
+                        .map_err(anyhow::Error::new)
+                })
+                .map(|round2_results_response| {
+                    (member_id_clone, round2_results_response.signature_share)
+                })
+            };
+            futures.push(future);
+        }
 
-            let round2_send_json_rpc_resp =
-                round2_send_json_rpc_resp.context("second rpc request to committee didn't work")?;
+        // Wait for all futures to complete
+        let results = join_all(futures).await;
 
-            let round2_response: bitcoincore_rpc::jsonrpc::Response =
-                serde_json::from_str(&round2_send_json_rpc_resp)?;
-            let round2_results_response: Round2Response = round2_response.result()?;
-
-            // save the commitment into signature shares
-            signature_shares.insert(***member_id, round2_results_response.signature_share);
+        let mut signature_shares = BTreeMap::new();
+        for result in results {
+            match result {
+                Ok((member_id, signature_share)) => {
+                    signature_shares.insert(member_id.clone(), signature_share);
+                }
+                Err(e) => {
+                    // Handle errors (e.g., log them)
+                    error!("Error in round 2: {:?}", e);
+                }
+            }
         }
 
         //
