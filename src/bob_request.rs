@@ -363,16 +363,25 @@ impl BobRequest {
         // TODO: we need to make sure that amount_out < smart_contract.locked_value
 
         // it must contain an output fee paid to zkBitcoinFund
-        let pay_to_zkbitcoin_fund_script =
-            p2tr_script_to(PublicKey::from_str(ZKBITCOIN_FEE_PUBKEY).unwrap());
-        debug!(
-            "- pay_to_zkbitcoin_fund_script: {:?}",
-            pay_to_zkbitcoin_fund_script
+        {
+            let pay_to_zkbitcoin_fund_script =
+                p2tr_script_to(PublicKey::from_str(ZKBITCOIN_FEE_PUBKEY).unwrap());
+            debug!(
+                "- pay_to_zkbitcoin_fund_script: {:?}",
+                pay_to_zkbitcoin_fund_script
+            );
+            let fee_output = tx
+                .output
+                .iter()
+                .find(|x| x.script_pubkey == pay_to_zkbitcoin_fund_script)
+                .context("the transaction does not contain an output fee paid to zkBitcoinFund")?;
+
+            // check fee amount
+            ensure!(
+            fee_output.value >= Amount::from_sat(FEE_ZKBITCOIN_SAT),
+            "the transaction fee paid to zkBitcoinFund needs to be {ZKBITCOIN_FEE_PUBKEY} satoshis at the very least, come on"
         );
-        tx.output
-            .iter()
-            .find(|x| x.script_pubkey == pay_to_zkbitcoin_fund_script)
-            .context("the transaction does not contain an output fee paid to zkBitcoinFund")?;
+        }
 
         if let Some(update) = update {
             // ensure we are updating because it's a stateful zkapp
