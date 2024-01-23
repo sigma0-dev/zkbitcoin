@@ -169,8 +169,8 @@ enum Commands {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // init log
-    env_logger::init();
+    // init default log level to info (unless RUST_LOG is set)
+    env_logger::init_from_env(env_logger::Env::default().default_filter_or("info"));
 
     // debug info
     info!(
