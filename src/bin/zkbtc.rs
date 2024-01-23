@@ -159,6 +159,10 @@ enum Commands {
 
     /// Starts an orchestrator
     StartOrchestrator {
+        /// The address to run the node on.
+        #[arg(short, long)]
+        address: Option<String>,
+
         #[arg(short, long)]
         publickey_package_path: String,
 
@@ -466,6 +470,7 @@ async fn main() -> Result<()> {
         }
 
         Commands::StartOrchestrator {
+            address,
             publickey_package_path,
             committee_cfg_path,
         } => {
@@ -489,7 +494,7 @@ async fn main() -> Result<()> {
             assert!(committee_cfg.threshold > 0);
 
             zkbitcoin::committee::orchestrator::run_server(
-                Some(ORCHESTRATOR_ADDRESS),
+                address.as_deref(),
                 pubkey_package,
                 committee_cfg,
             )
