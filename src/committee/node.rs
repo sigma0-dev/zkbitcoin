@@ -211,6 +211,10 @@ async fn round_2_signing(
     RpcResult::Ok(round2_response)
 }
 
+async fn is_alive(_params: Params<'static>, _context: Arc<NodeState>) -> String {
+    "hello".to_string()
+}
+
 //
 // Main server code
 //
@@ -236,8 +240,10 @@ pub async fn run_server(
         .build(address.parse::<SocketAddr>()?)
         .await?;
     let mut module = RpcModule::new(ctx);
+
     module.register_async_method("round_1_signing", round_1_signing)?;
     module.register_async_method("round_2_signing", round_2_signing)?;
+    module.register_async_method("is_alive", is_alive)?;
 
     let addr = server.local_addr()?;
     let handle = server.start(module);

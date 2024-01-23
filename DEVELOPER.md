@@ -93,6 +93,12 @@ The node is now running in the background and listening on port 8891, and you ca
 nc -zv ${SERVER_IP} 8891
 ```
 
+or with a bogus JSON-RPC request:
+
+```shell
+curl -X POST http://${SERVER_IP}:8891 -H 'Content-Type: application/json' -d '{"jsonrpc": "2.0", "id": "thing", "method":"is_alive"}'
+```
+
 ### Updating the MPC node software
 
 ```shell
