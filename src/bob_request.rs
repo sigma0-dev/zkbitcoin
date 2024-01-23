@@ -364,7 +364,7 @@ impl BobRequest {
 
         // it must contain an output fee paid to zkBitcoinFund
         let pay_to_zkbitcoin_fund_script =
-            p2tr_script_to(PublicKey::from_str(ZKBITCOIN_PUBKEY).unwrap());
+            p2tr_script_to(PublicKey::from_str(ZKBITCOIN_FEE_PUBKEY).unwrap());
         debug!(
             "- pay_to_zkbitcoin_fund_script: {:?}",
             pay_to_zkbitcoin_fund_script
