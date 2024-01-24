@@ -46,18 +46,18 @@ impl RpcCtx {
             timeout: timeout.unwrap_or(Duration::from_secs(JSON_RPC_TIMEOUT)),
         };
 
-        info!("- using RPC node at address {}", ctx.address());
+        debug!("- using RPC node at address {}", ctx.address());
 
         if ctx.auth().is_some() {
-            info!("- using given RPC credentials");
+            debug!("- using given RPC credentials");
         } else {
-            info!("- using no RPC credentials");
+            debug!("- using no RPC credentials");
         }
 
         if let Some(wallet) = ctx.wallet() {
-            info!("- using wallet {wallet}");
+            debug!("- using wallet {wallet}");
         } else {
-            info!("- using default wallet");
+            debug!("- using default wallet");
         }
 
         ctx
