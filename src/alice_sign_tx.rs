@@ -116,7 +116,7 @@ mod tests {
         let (user, pass) = our_rpc
             .auth()
             .unwrap()
-            .split('.')
+            .split(':')
             .map(str::to_string)
             .collect_tuple()
             .expect("auth was incorrectly passed (expected `user:pw`)");
