@@ -404,6 +404,8 @@ async fn main() -> Result<()> {
                     let filename = format!("key-{id}.json");
 
                     let path = output_dir.join(filename);
+                    std::fs::create_dir_all(path.clone().parent().unwrap())
+                        .expect("Couldn't create directory");
                     let file = std::fs::File::create(&path)
                         .expect("couldn't create file given output dir");
                     serde_json::to_writer_pretty(file, key_package).unwrap();
