@@ -204,6 +204,8 @@ impl BobRequest {
                 )?;
                 let new_value = smart_contract.locked_value + amount_in - amount_out;
 
+                let withdraw_happening = amount_out != Amount::ZERO;
+
                 // convert to BTC as expected by API
                 let amount_in = amount_in.to_string_in(Denomination::Bitcoin);
                 let new_value = new_value.to_string_in(Denomination::Bitcoin);
@@ -228,10 +230,12 @@ impl BobRequest {
                 }));
 
                 // Bob can only withdraw amount_out
-                debug!("- Bob is receiving amount_out: {}", amount_out);
-                outputs.push(serde_json::json!({
-                    bob_address.to_string(): amount_out,
-                }));
+                if withdraw_happening {
+                    debug!("- Bob is receiving amount_out: {}", amount_out);
+                    outputs.push(serde_json::json!({
+                        bob_address.to_string(): amount_out,
+                    }));
+                }
 
                 // its vk + new state
                 let new_state = new_state.as_ref().context("no new state")?;

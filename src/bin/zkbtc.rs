@@ -227,6 +227,11 @@ async fn main() -> Result<()> {
                 "the circuit must have at least one public input (the txid)"
             );
 
+            info!(
+                "deploying circuit {} with {num_public_inputs} public inputs",
+                hex::encode(&vk_hash)
+            );
+
             // sanity check for stateful zkapps
             if num_public_inputs > 1 {
                 let double_state_len = vk.nPublic - 3; /* txid, amount_in, amount_out */
