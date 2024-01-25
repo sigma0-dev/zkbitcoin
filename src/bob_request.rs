@@ -33,6 +33,9 @@ use crate::{json_rpc_stuff::RpcCtx, plonk};
 /// Converts a string to some Bitcoin [Amount].
 fn string_to_amount(amount: &str) -> Result<Amount> {
     // TODO: need to write a test here, once we have tested this we need to figure out which one to keep :D
+    if amount == "0" {
+        return Ok(Amount::ZERO);
+    }
     let big = BigUint::from_str(amount).context("amount is not a u64 (err_code: 1)")?;
     let big_u64s = big.to_u64_digits();
     ensure!(big_u64s.len() == 1, "amount is not a u64 (err_code: 2)");
@@ -736,4 +739,16 @@ pub async fn fetch_smart_contract(ctx: &RpcCtx, txid: bitcoin::Txid) -> Result<S
 
     // parse transaction
     extract_smart_contract_from_tx(&transaction)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_zero() {
+        let amount_in = string_to_amount("0").unwrap();
+        let amount_in = amount_in.to_string_in(Denomination::Bitcoin);
+        assert_eq!(&amount_in, "0");
+    }
 }
