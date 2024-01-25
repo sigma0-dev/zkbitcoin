@@ -59,6 +59,12 @@ pub enum MemberStatus {
     Offline,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StatusResponse {
+    pub online_members: Vec<frost_secp256k1_tr::Identifier>,
+    pub offline_members: Vec<frost_secp256k1_tr::Identifier>,
+}
+
 // This will be the second part in the RpcModule context wrapped in a RwLock.
 // I think this is better than including it in the actual CommitteeConfig since handlers will need
 // to wait for a read lock every time an rpc handler needs to access the config.
@@ -119,6 +125,27 @@ impl MemberStatusState {
     pub fn mark_as_offline(&mut self, key: &frost_secp256k1_tr::Identifier) {
         let m_status = self.status.get_mut(key).unwrap();
         *m_status = MemberStatus::Offline;
+    }
+
+    pub fn get_status(
+        &self,
+    ) -> (
+        Vec<frost_secp256k1_tr::Identifier>,
+        Vec<frost_secp256k1_tr::Identifier>,
+    ) {
+        let mut online = Vec::new();
+        let mut offline = Vec::new();
+
+        for (member, status) in self.status.iter() {
+            match *status {
+                MemberStatus::Online => online.push(member.clone()),
+                MemberStatus::Offline | MemberStatus::Disconnected(_) => {
+                    offline.push(member.clone())
+                }
+            };
+        }
+
+        (online, offline)
     }
 
     fn get_current_time_secs() -> u64 {
@@ -524,6 +551,21 @@ async fn unlock_funds(
     RpcResult::Ok(bob_response)
 }
 
+async fn get_nodes_status(
+    _params: Params<'static>,
+    context: RpcOrchestratorContext,
+) -> RpcResult<StatusResponse> {
+    let (online, offline) = {
+        let mss_r = context.1.read().unwrap();
+        mss_r.get_status()
+    };
+
+    RpcResult::Ok(StatusResponse {
+        online_members: online,
+        offline_members: offline,
+    })
+}
+
 pub async fn run_server(
     address: Option<&str>,
     pubkey_package: frost::PublicKeyPackage,
@@ -549,6 +591,7 @@ pub async fn run_server(
         .await?;
     let mut module = RpcModule::new(ctx);
     module.register_async_method("unlock_funds", unlock_funds)?;
+    module.register_async_method("status", get_nodes_status)?;
 
     let addr = server.local_addr()?;
     let handle = server.start(module);
