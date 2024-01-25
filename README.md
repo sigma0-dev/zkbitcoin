@@ -16,7 +16,15 @@ Jump straight to [usage](#usage) if you want to see some examples, but make sure
 
 ### Circom/snarkjs
 
-We build on top of the well-known [circom](https://github.com/iden3/circom)/[snarkjs](https://github.com/iden3/snarkjs) stack. 
+We build on top of the well-known [circom](https://github.com/iden3/circom)/[snarkjs](https://github.com/iden3/snarkjs) stack.
+
+To install `circom`, please follow [their guide](https://docs.circom.io/getting-started/installation/).
+
+To install `snarkjs`, just run:
+
+```
+npm install -g snarkjs@latest
+```
 
 ### Bitcoin wallet
 
@@ -44,7 +52,7 @@ There are two types of zkapps: [stateless](#stateless-zkapps) and [stateful](#st
 
 ### Stateless zkapps
 
-A stateless zkapp is single-use, and the bitcoin it locks can be redeemed by anyone who can provide a proof of correct execution. An example of a stateless zkapp is in [`examples/circuit/stateless.circom`](examples/circuit/stateless.circom) (which releases funds to anyone who can find the preimage of a hash function). 
+A stateless zkapp is single-use, and the bitcoin it locks can be redeemed by anyone who can provide a proof of correct execution. An example of a stateless zkapp is in [`examples/circuit/stateless.circom`](examples/circuit/stateless.circom) (which releases funds to anyone who can find the preimage of a hash function).
 A stateless zkapp must always contains one public input that authenticates the transaction that spends it:
 
 ```circom
@@ -66,7 +74,7 @@ $ zkbtc deploy-zkapp --circom-circuit-path examples/circuit/stateless.circom --s
 
 This will lock 1,000 satoshis in the zkapp and return the transaction ID of the transaction that deployed the zkapp. A stateless zkapp can be referenced by that transaction ID.
 
-Bob can then unlock the funds from the stateless zkapp  with the following command:
+Bob can then unlock the funds from the stateless zkapp with the following command:
 
 ```shell
 $ zkbtc use-zkapp --txid "e793bdd8dfdd9912d971790a5f385ad3f1215dce97e25dbefe5449faba632836" --circom-circuit-path examples/circuit/stateless.circom --proof-inputs '{"preimage":["1"]}' --recipient-address "tb1q6nkpv2j9lxrm6h3w4skrny3thswgdcca8cx9k6"
@@ -94,7 +102,7 @@ component main{public [prev_state, truncated_txid, amount_out, amount_in]} = Mai
 You can deploy a stateful zkapp with the following command:
 
 ```shell
-$ zkbtc deploy-zkapp --circom-circuit-path examples/circuit/stateful.circom --initial-state "1" --satoshi-amount 1000     
+$ zkbtc deploy-zkapp --circom-circuit-path examples/circuit/stateful.circom --initial-state "1" --satoshi-amount 1000
 ```
 
 You can use a stateful zkapps with the following command:
@@ -105,8 +113,8 @@ $ zkbtc use-zkapp --circom-circuit-path examples/circuit/stateful.circom --proof
 
 specifying the following inputs:
 
-* `amount_out`: amount being withdrawn
-* `amount_in`: amount being deposited
+- `amount_out`: amount being withdrawn
+- `amount_in`: amount being deposited
 
 Other inputs will be automatically filled in (for example, it will use the zkapp's state as `prev_state` input).
 
