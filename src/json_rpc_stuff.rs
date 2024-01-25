@@ -5,7 +5,7 @@
 use anyhow::{Context, Result};
 use base64::{engine::general_purpose, Engine};
 use bitcoin::{Amount, Transaction, Txid};
-use log::{debug, info, log_enabled, Level};
+use log::{debug, log_enabled, Level};
 use reqwest::{
     header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE},
     Client,
