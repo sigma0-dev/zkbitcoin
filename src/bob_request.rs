@@ -342,7 +342,7 @@ impl BobRequest {
         Ok(res)
     }
 
-    pub fn zkapp_tx_with_witness(&self, witness: Witness) -> Result<Transaction> {
+    pub fn unlocked_tx(&self, witness: Witness) -> Result<Transaction> {
         let mut transaction = self.tx.clone();
 
         transaction

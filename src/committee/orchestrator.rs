@@ -507,11 +507,9 @@ impl Orchestrator {
             let mut witness = Witness::new();
             witness.push(final_signature.to_vec());
 
-            let transaction = bob_request.zkapp_tx_with_witness(witness)?;
-
             // return the signed transaction
             return Ok(BobResponse {
-                unlocked_tx: transaction,
+                unlocked_tx: bob_request.unlocked_tx(witness)?,
             });
         }
     }
