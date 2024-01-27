@@ -146,7 +146,7 @@ impl BobRequest {
             // extract new_state
             let new_state = public_inputs
                 .0
-                .get(0)
+                .first()
                 .cloned()
                 .context("the full public input does not contain a new state")?;
 
@@ -196,13 +196,13 @@ impl BobRequest {
                 let amount_in = string_to_amount(
                     proof_inputs
                         .get("amount_in")
-                        .and_then(|x| x.get(0))
+                        .and_then(|x| x.first())
                         .context("amount_in in proof inputs must be of length 1")?,
                 )?;
                 let amount_out = string_to_amount(
                     proof_inputs
                         .get("amount_out")
-                        .and_then(|x| x.get(0))
+                        .and_then(|x| x.first())
                         .context("amount_out in proof inputs must be of length 1")?,
                 )?;
                 let new_value = smart_contract.locked_value + amount_in - amount_out;
@@ -284,7 +284,7 @@ impl BobRequest {
             let new_state = new_state.unwrap();
             ensure!(
                 public_inputs.0.len()
-                    == 1 * 2 /* prev/new_state */ + 1 /* truncated txid */ + 1 /* amount_out */ + 1, /* amount_in */
+                    == 2 /* prev/new_state */ + 1 /* truncated txid */ + 1 /* amount_out */ + 1, /* amount_in */
                 "the number of public inputs is not correct"
             );
 
