@@ -36,7 +36,7 @@ pub const CIRCOM_ETH_PRIME_BYTELEN: usize = 32;
 pub const STATELESS_ZKAPP_PUBLIC_INPUT_LEN: usize = 1 /* truncated txid */;
 
 /// The expected number of public inputs for a stateful zkapp.
-pub const STATEFUL_ZKAPP_PUBLIC_INPUT_LEN: usize = 1 * 2 /* new state + prev state */ + 1 /* truncated txid */ + 1 /* amount_out */ + 1 /* amount_in */;
+pub const STATEFUL_ZKAPP_PUBLIC_INPUT_LEN: usize = 2 /* new state + prev state */ + 1 /* truncated txid */ + 1 /* amount_out */ + 1 /* amount_in */;
 
 /// The number of seconds to sleep between orchestrator-node keepalive requests
 pub const KEEPALIVE_WAIT_SECONDS: u64 = 5;

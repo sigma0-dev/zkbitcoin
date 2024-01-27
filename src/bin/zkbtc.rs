@@ -229,7 +229,7 @@ async fn main() -> Result<()> {
 
             info!(
                 "deploying circuit {} with {num_public_inputs} public inputs",
-                hex::encode(&vk_hash)
+                hex::encode(vk_hash)
             );
 
             // sanity check for stateful zkapps
@@ -421,7 +421,7 @@ async fn main() -> Result<()> {
             {
                 let path = output_dir.join("publickey-package.json");
                 let file =
-                    std::fs::File::create(&path).expect("couldn't create file given output dir");
+                    std::fs::File::create(path).expect("couldn't create file given output dir");
                 serde_json::to_writer_pretty(file, &pubkey_package).unwrap();
             }
 
@@ -445,7 +445,7 @@ async fn main() -> Result<()> {
                 };
                 let path = output_dir.join("committee-cfg.json");
                 let file =
-                    std::fs::File::create(&path).expect("couldn't create file given output dir");
+                    std::fs::File::create(path).expect("couldn't create file given output dir");
                 serde_json::to_writer_pretty(file, &committee_cfg).unwrap();
             }
         }

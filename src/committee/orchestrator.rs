@@ -81,16 +81,16 @@ impl MemberStatusState {
         let mut futures = Vec::with_capacity(config.members.len());
 
         for (key, member) in config.members.iter() {
-            let _ = key_to_addr.insert(key.clone(), member.address.clone());
+            let _ = key_to_addr.insert(*key, member.address.clone());
             futures.push((
-                key.clone(),
+                *key,
                 Self::check_alive(member.address.clone()),
                 member.address.clone(),
             ));
         }
 
         for (key, future, address) in futures.into_iter() {
-            let new_status = if future.await == true {
+            let new_status = if future.await {
                 info!("{address} is online");
                 MemberStatus::Online
             } else {
@@ -138,10 +138,8 @@ impl MemberStatusState {
 
         for (member, status) in self.status.iter() {
             match *status {
-                MemberStatus::Online => online.push(member.clone()),
-                MemberStatus::Offline | MemberStatus::Disconnected(_) => {
-                    offline.push(member.clone())
-                }
+                MemberStatus::Online => online.push(*member),
+                MemberStatus::Offline | MemberStatus::Disconnected(_) => offline.push(*member),
             };
         }
 
@@ -156,12 +154,12 @@ impl MemberStatusState {
     }
 
     fn fib(n: u64) -> u64 {
-        if n <= 0 {
-            return 0;
+        if n == 0 {
+            0
         } else if n == 1 {
-            return 1;
+            1
         } else {
-            return Self::fib(n - 1) + Self::fib(n - 2);
+            Self::fib(n - 1) + Self::fib(n - 2)
         }
     }
 
@@ -211,8 +209,8 @@ impl MemberStatusState {
                     .key_to_addr
                     .iter()
                     .map(|(key, addr)| {
-                        let status = r_lock.status.get(key).unwrap().clone();
-                        (key.clone(), addr.clone(), status)
+                        let status = *r_lock.status.get(key).unwrap();
+                        (*key, addr.clone(), status)
                     })
                     .filter(|(_, _, status)| match *status {
                         MemberStatus::Online => true,
