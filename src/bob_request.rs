@@ -346,12 +346,16 @@ impl BobRequest {
 
     /// The transaction ID and output index of the zkapp used in the request.
     fn zkapp_outpoint(&self) -> Result<OutPoint> {
-        let txin = self
+        let outpoint = self
             .tx
             .input
-            .get(self.zkapp_input)
-            .context("the transaction ID that was passed in the request does not exist")?;
-        Ok(txin.previous_output)
+            .iter()
+            .find(|tx| tx.previous_output.txid == self.zkapp_tx.txid())
+            .context("the transaction ID that was passed in the request does not exist")?
+            .previous_output;
+        
+        Ok(outpoint)
+
         // TODO: do we care about other fields in txin and previous_output?
     }
 
@@ -435,13 +439,9 @@ impl BobRequest {
         let smart_contract = extract_smart_contract_from_tx(&self.zkapp_tx)?;
 
         // ensure that the zkapp_tx given is the one being used
-        let zkapp_outpoint = self
-            .tx
-            .input
-            .get(self.zkapp_input)
-            .context("the request zkapp_input is incorrect")?;
+        let zkapp_outpoint = self.zkapp_outpoint()?;
         ensure!(
-            smart_contract.txid == zkapp_outpoint.previous_output.txid,
+            smart_contract.txid == zkapp_outpoint.txid,
             "the zkapp_tx given is not the one being used"
         );
 
