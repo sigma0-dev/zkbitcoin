@@ -1,23 +1,5 @@
-use std::{collections::HashMap, env, path::PathBuf, str::FromStr};
-use anyhow::{ensure, Context, Result};
-use bitcoin::{Address, Txid};
+use std::path::PathBuf;
 use clap::{Parser, Subcommand};
-use log::info;
-use tempdir::TempDir;
-use zkbitcoin::{
-    alice_sign_tx::generate_and_broadcast_transaction,
-    bob_request::{fetch_smart_contract, send_bob_request, BobRequest},
-    committee::orchestrator::{CommitteeConfig, Member},
-    constants::{
-        BITCOIN_JSON_RPC_VERSION, ORCHESTRATOR_ADDRESS, ZKBITCOIN_FEE_PUBKEY, ZKBITCOIN_PUBKEY,
-    },
-    frost, get_network,
-    json_rpc_stuff::{
-        scan_txout_set, send_raw_transaction, sign_transaction, RpcCtx, TransactionOrHex,
-    },
-    snarkjs::{self, CompilationResult},
-    taproot_addr_from,
-};
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]

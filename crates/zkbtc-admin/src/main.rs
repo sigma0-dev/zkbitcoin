@@ -1,24 +1,15 @@
 mod cli;
 
-use std::{collections::HashMap, env, path::PathBuf};
-use anyhow::{ensure, Context, Result};
-use bitcoin::{Address, Txid};
-use clap::{Parser, Subcommand};
+use std::path::PathBuf;
+use anyhow::Result;
+use clap::Parser;
 use log::info;
-use tempdir::TempDir;
 use zkbitcoin_core::{
-    alice_sign_tx::generate_and_broadcast_transaction,
-    bob_request::{fetch_smart_contract, send_bob_request, BobRequest},
-    committee::orchestrator::{CommitteeConfig, Member},
+    committee::orchestrator::{run_server, CommitteeConfig, Member},
     constants::{
-        BITCOIN_JSON_RPC_VERSION, ORCHESTRATOR_ADDRESS, ZKBITCOIN_FEE_PUBKEY, ZKBITCOIN_PUBKEY,
+        ZKBITCOIN_FEE_PUBKEY, ZKBITCOIN_PUBKEY,
     },
-    frost, get_network,
-    json_rpc_stuff::{
-        scan_txout_set, send_raw_transaction, sign_transaction, RpcCtx, TransactionOrHex,
-    },
-    snarkjs::{self, CompilationResult},
-    taproot_addr_from,
+    frost, taproot_addr_from,
 };
 use crate::cli::*;
 
@@ -127,7 +118,7 @@ async fn main() -> Result<()> {
                 publickey_package
             };
 
-            zkbitcoin::committee::node::run_server(address.as_deref(), key_package, pubkey_package)
+            zkbitcoin_core::committee::node::run_server(address.as_deref(), key_package, pubkey_package)
                 .await
                 .unwrap();
         }
@@ -156,7 +147,7 @@ async fn main() -> Result<()> {
             // sanity check (unfortunately the publickey_package doesn't contain this info)
             assert!(committee_cfg.threshold > 0);
 
-            zkbitcoin::committee::orchestrator::run_server(
+            run_server(
                 address.as_deref(),
                 pubkey_package,
                 committee_cfg,
