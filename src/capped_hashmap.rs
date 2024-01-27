@@ -30,7 +30,7 @@ where
         self.last_tasks.push_front(k);
 
         if self.last_tasks.len() == Self::MAX_LEN {
-            // remove the oldest item. We an safely unwrap because we know the vec is no empty at this point
+            // remove the oldest item. We an safely unwrap because we know the last_tasks is not empty at this point
             let key = self.last_tasks.pop_back().unwrap();
             self.remove(&key);
 
