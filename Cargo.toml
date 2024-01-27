@@ -4,3 +4,9 @@ members = [
 ]
 
 resolver = "2"
+
+[patch.crates-io]
+# see docs/serialization.md
+bitcoin = { git = "https://github.com/mimoo/rust-bitcoin/", branch = "mimoo/fix_0_31" }
+# see docs/mpc_and_taproot.md
+frost-core = { git = "https://github.com/mimoo/frost", branch = "mimoo/fix5" }

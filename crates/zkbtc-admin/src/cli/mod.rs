@@ -21,13 +21,13 @@ use zkbitcoin::{
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
-struct Cli {
+pub struct Cli {
     #[command(subcommand)]
-    command: Commands,
+    pub command: Commands,
 }
 
 #[derive(Subcommand)]
-enum Commands {
+pub enum Commands {
     /// Deploy a zkapp on Bitcoin.
     DeployZkapp {
         /// The wallet name of the RPC full node.
