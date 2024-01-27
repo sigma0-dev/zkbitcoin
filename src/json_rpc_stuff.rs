@@ -5,7 +5,7 @@
 use anyhow::{Context, Result};
 use base64::{engine::general_purpose, Engine};
 use bitcoin::{Amount, Transaction, Txid};
-use log::{debug, info, log_enabled, Level};
+use log::{debug, log_enabled, Level};
 use reqwest::{
     header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE},
     Client,
@@ -46,18 +46,18 @@ impl RpcCtx {
             timeout: timeout.unwrap_or(Duration::from_secs(JSON_RPC_TIMEOUT)),
         };
 
-        info!("- using RPC node at address {}", ctx.address());
+        debug!("- using RPC node at address {}", ctx.address());
 
         if ctx.auth().is_some() {
-            info!("- using given RPC credentials");
+            debug!("- using given RPC credentials");
         } else {
-            info!("- using no RPC credentials");
+            debug!("- using no RPC credentials");
         }
 
         if let Some(wallet) = ctx.wallet() {
-            info!("- using wallet {wallet}");
+            debug!("- using wallet {wallet}");
         } else {
-            info!("- using default wallet");
+            debug!("- using default wallet");
         }
 
         ctx
