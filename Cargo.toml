@@ -1,4 +1,6 @@
 [workspace]
 members = [
-  "crate/*",
+  "crates/*",
 ]
+
+resolver = "2"
