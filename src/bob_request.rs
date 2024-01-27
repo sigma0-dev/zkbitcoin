@@ -355,17 +355,6 @@ impl BobRequest {
         Ok(transaction)
     }
 
-    fn add_zkapp_witness(&mut self, witness: Witness) -> Result<()> {
-        self.tx
-            .input
-            .iter_mut()
-            .find(|tx| tx.previous_output.txid == self.zkapp_tx.txid())
-            .context("couldn't find zkapp input in transaction")?
-            .witness = witness;
-
-        Ok(())
-    }
-
     /// The transaction ID and output index of the zkapp used in the request.
     fn zkapp_outpoint(&self) -> Result<OutPoint> {
         let outpoint = self
