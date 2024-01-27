@@ -32,7 +32,7 @@ where
     if self.last_tasks.len() == Self::MAX_LEN {
       // remove the oldest item. We an safely unwrap because we know the vec is no empty at this point
       let key = self.last_tasks.pop_back().unwrap();
-      self.inner.remove(&key);
+      self.remove(&key);
 
       return Some(key)
     }
@@ -40,5 +40,20 @@ where
     self.inner.insert(k, v);
     
     None
+  }
+
+  /// Removes a key from the map, returning the value at the key if the key was previously in the map.
+  pub fn remove(&mut self, k: &K) -> Option<V> {
+    let Some(v) = self.inner.remove(k) else {
+      return None
+    };
+    
+    self.last_tasks = self.last_tasks
+      .iter()
+      .filter(|key| *key != k)
+      .map(|key| *key)
+      .collect::<VecDeque<_>>();
+
+    Some(v)
   }
 }

@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::BTreeMap,
     net::SocketAddr,
     sync::{Arc, RwLock},
 };
@@ -17,9 +17,7 @@ use rand::thread_rng;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    bob_request::{BobRequest, SmartContract},
-    frost,
-    mpc_sign_tx::get_digest_to_hash,
+    bob_request::{BobRequest, SmartContract}, capped_hashmap::CappedHashMap, frost, mpc_sign_tx::get_digest_to_hash
 };
 
 //
@@ -35,7 +33,7 @@ pub struct NodeState {
     pub pubkey_package: frost::PublicKeyPackage,
 
     // TODO: ensure that this cannot grow like crazy? prune old tasks?
-    pub signing_tasks: RwLock<HashMap<Txid, LocalSigningTask>>,
+    pub signing_tasks: RwLock<CappedHashMap<Txid, LocalSigningTask>>,
 }
 
 #[derive(Clone)]
@@ -233,7 +231,7 @@ pub async fn run_server(
     let ctx = NodeState {
         key_package,
         pubkey_package,
-        signing_tasks: RwLock::new(HashMap::new()),
+        signing_tasks: RwLock::new(CappedHashMap::new()),
     };
 
     let server = Server::builder()
