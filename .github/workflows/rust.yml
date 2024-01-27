@@ -40,6 +40,40 @@ jobs:
       - name: Install latest nextest release
         uses: taiki-e/install-action@nextest
 
+      - name: Run Bitcoin Core in regtest mode
+        run: |
+          set -eE
+
+          docker run -d --rm \
+            --name bitcoind \
+            -p 18443:18443 lncm/bitcoind:v26.0 \
+            -chain=regtest \
+            -rpcuser=hello -rpcpassword=world \
+            -rpcbind=0.0.0.0 -rpcallowip=0.0.0.0/0 \
+            -fallbackfee=0.00001
+
+          until curl http://127.0.0.1:18443/ --user hello:world --fail -d '{"jsonrpc":"1.0","id":1,"method":"createwallet","params":["getblockchaininfo"]}' -H 'Content-Type: text/plain' > /dev/null 2>&1; do
+            echo "Waiting for bitcoind to be ready"
+            sleep 1
+          done
+
+          echo "bitcoind is ready"
+
+          # Creates `mywallet`
+          curl http://127.0.0.1:18443/ --user hello:world --fail -d '{"jsonrpc":"1.0","id":1,"method":"createwallet","params":["mywallet"]}' -H 'Content-Type: text/plain' 2>/dev/null | jq
+
+          # Creates a new address
+          WALLET_ADDRESS=$(curl http://127.0.0.1:18443/wallet/mywallet --user hello:world --fail -d '{"jsonrpc":"1.0","id":1,"method":"getnewaddress","params":[""]}' -H 'Content-Type: text/plain' 2>/dev/null | jq -r '.result')
+          echo "Wallet address: $WALLET_ADDRESS"
+
+          # Funds the new address by creating 101 blocks (https://developer.bitcoin.org/examples/testing.html#regtest-mode)
+          curl http://127.0.0.1:18443/ --user hello:world --fail -d '{"jsonrpc":"1.0","id":1,"method":"generatetoaddress","params":[101,"'$WALLET_ADDRESS'"]}' -H 'Content-Type: text/plain' 2>/dev/null | jq
+
+          # Populates test env vars
+          echo "BITCOIN_JSON_RPC_ENDPOINT=http://localhost:18443" >> $GITHUB_ENV
+          echo "BITCOIN_JSON_RPC_AUTH=hello:world" >> $GITHUB_ENV
+          echo "BITCOIN_JSON_RPC_WALLET=mywallet" >> $GITHUB_ENV
+
       #
       # Tests
       #
@@ -48,7 +82,9 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: nextest
-          args: run --all-features --release
+          # Test `get_zkapps` is skipped on CI for now as it uses a hard-coded testnet address
+          # TODO: remove this exclusion once the test becomes end-to-end
+          args: run --all-features --release -E "package(zkbitcoin) - test(get_zkapps)"
 
       #
       # Coding guidelines
