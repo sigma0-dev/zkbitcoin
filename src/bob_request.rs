@@ -2,8 +2,8 @@ use std::{collections::HashMap, path::Path, str::FromStr, vec};
 
 use anyhow::{bail, ensure, Context, Result};
 use bitcoin::{
-    opcodes::all::OP_RETURN, script::Instruction, Address, Amount, Denomination, OutPoint,
-    PublicKey, Transaction, TxOut, Txid,
+    opcodes::all::OP_RETURN, script::Instruction, Address, Amount, Denomination, OutPoint, PublicKey,
+    Transaction, TxOut, Txid, Witness,
 };
 use log::{debug, info};
 use num_bigint::BigUint;
@@ -87,10 +87,6 @@ pub struct BobRequest {
     /// Note that for this optimization to work, we need the full transaction,
     /// as we need to deconstruct the txid of the input of `tx`.
     pub zkapp_tx: Transaction,
-
-    /// The index of the input that contains the zkapp being used.
-    // TODO: we should be able to infer this!
-    pub zkapp_input: usize,
 
     /// The verifier key authenticated by the deployed transaction.
     pub vk: plonk::VerifierKey,
@@ -300,14 +296,17 @@ impl BobRequest {
         };
 
         // compute zkapp input as the input that uses the zkapp
-        let zkapp_input = tx
+        let zkapp_inputs = tx
             .input
             .iter()
-            .enumerate()
-            .find(|(_, x)| x.previous_output.txid == txid)
-            .context("internal error: the transaction does not contain the zkapp being used")?
-            .0;
+            .filter(|x| x.previous_output.txid == txid)
+            .collect::<Vec<_>>();
 
+        ensure!(
+            zkapp_inputs.len() == 1,
+            "internal error: the transaction does not contain the zkapp being used or it contains duplicate inputs"
+        );
+        
         // compute prev_outs as all the TxOut pointed out by the inputs
         let mut prev_outs = vec![];
         for (input_idx, input) in tx.input.iter().enumerate() {
@@ -332,7 +331,6 @@ impl BobRequest {
         let res = Self {
             tx,
             zkapp_tx,
-            zkapp_input,
             vk,
             proof,
             update,
@@ -342,6 +340,30 @@ impl BobRequest {
         debug!("- Bob's request: {res:?}");
 
         Ok(res)
+    }
+
+    pub fn zkapp_tx_with_witness(&self, witness: Witness) -> Result<Transaction> {
+        let mut transaction = self.tx.clone();
+
+        transaction
+            .input
+            .iter_mut()
+            .find(|tx| tx.previous_output.txid == self.zkapp_tx.txid())
+            .context("couldn't find zkapp input in transaction")?
+            .witness = witness;
+        
+        Ok(transaction)
+    }
+
+    fn add_zkapp_witness(&mut self, witness: Witness) -> Result<()> {
+        self.tx
+            .input
+            .iter_mut()
+            .find(|tx| tx.previous_output.txid == self.zkapp_tx.txid())
+            .context("couldn't find zkapp input in transaction")?
+            .witness = witness;
+
+        Ok(())
     }
 
     /// The transaction ID and output index of the zkapp used in the request.

@@ -507,12 +507,7 @@ impl Orchestrator {
             let mut witness = Witness::new();
             witness.push(final_signature.to_vec());
 
-            let mut transaction = bob_request.tx.clone();
-            transaction
-                .input
-                .get_mut(bob_request.zkapp_input)
-                .context("couldn't find zkapp input in transaction")?
-                .witness = witness;
+            let transaction = bob_request.zkapp_tx_with_witness(witness)?;
 
             // return the signed transaction
             return Ok(BobResponse {
