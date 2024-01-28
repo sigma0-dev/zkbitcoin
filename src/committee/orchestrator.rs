@@ -470,7 +470,7 @@ impl Orchestrator {
                     debug!("tweaked2: {}", tweaked2);
                     assert_eq!(tweaked, tweaked2);
 
-                    // twaked
+                    // tweaked
                     let tweaked3 = frost_secp256k1_tr::Secp256K1Sha256::tweaked_public_key(
                         group_pubkey.element(),
                     );
