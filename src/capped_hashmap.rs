@@ -108,4 +108,24 @@ mod tests {
           assert_eq!(col.size(), 10);
         }
     }
+
+    #[test]
+    fn test_remove() {
+      let mut col: CappedHashMap<u8, u8> = CappedHashMap::new(10);
+
+      for i in 0..10 {
+          col.insert(i, i);
+      }
+
+      for i in 0..10 {
+        let v = col.remove(&i);
+        assert!(v.is_some());
+        assert_eq!(v.unwrap(), i);
+        assert_eq!(col.size() as u8, 10 - i - 1);
+      }
+
+      // the collection is empty so the next remove should return None
+      let v = col.remove(&0);
+      assert!(v.is_none());
+    }
 }
