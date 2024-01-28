@@ -234,7 +234,7 @@ pub async fn run_server(
     let ctx = NodeState {
         key_package,
         pubkey_package,
-        signing_tasks: RwLock::new(CappedHashMap::new()),
+        signing_tasks: RwLock::new(CappedHashMap::new(100)),
     };
 
     let server = Server::builder()
