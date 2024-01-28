@@ -10,7 +10,7 @@ where
 {
     capacity: usize,
     inner: HashMap<K, V>,
-    last_tasks: VecDeque<K>,
+    last_items: VecDeque<K>,
 }
 
 impl<K, V> CappedHashMap<K, V>
@@ -19,9 +19,11 @@ where
 {
     pub fn new(capacity: usize) -> Self {
         Self {
-            capacity,
+            // We add a little bit margin to the capacity, because we always insert first and then check
+            // if collection is full. So we don't want the hashmap to double it's capacity because of that.
+            capacity: capacity + 1,
             inner: HashMap::with_capacity(capacity),
-            last_tasks: VecDeque::with_capacity(capacity),
+            last_items: VecDeque::with_capacity(capacity),
         }
     }
 
@@ -30,16 +32,18 @@ where
     pub fn insert(&mut self, k: K, v: V) -> Option<K> {
         let mut ret = None;
 
-        if self.last_tasks.len() == self.capacity {
-            // remove the oldest item. We an safely unwrap because we know the last_tasks is not empty at this point
-            let key = self.last_tasks.pop_back().unwrap();
+        // replacing a value should not push any new items to last_items
+        if let None = self.inner.insert(k, v) {
+            self.last_items.push_front(k);
+        }
+
+        if self.last_items.len() > self.capacity - 1 {
+            // remove the oldest item. We an safely unwrap because we know the last_items is not empty at this point
+            let key = self.last_items.pop_back().unwrap();
             assert!(self.remove(&key).is_some());
 
             ret = Some(key);
         }
-
-        self.last_tasks.push_front(k);
-        self.inner.insert(k, v);
 
         ret
     }
@@ -50,8 +54,8 @@ where
             return None;
         };
 
-        self.last_tasks = self
-            .last_tasks
+        self.last_items = self
+            .last_items
             .iter()
             .filter(|key| *key != k)
             .map(|key| *key)
@@ -101,31 +105,68 @@ mod tests {
         }
 
         for i in 10..30 {
-          // the nth oldest key will be removed
-          let key_removed = col.insert(i, i);
-          assert!(key_removed.is_some());
-          assert_eq!(key_removed.unwrap(), i - 10);
-          assert_eq!(col.size(), 10);
+            // the nth oldest key will be removed
+            let key_removed = col.insert(i, i);
+            assert!(key_removed.is_some());
+            assert_eq!(key_removed.unwrap(), i - 10);
+            assert_eq!(col.size(), 10);
         }
+
+        // Not that we should have the last 10 keys in the collection i.e. 20-30. All the previous
+        // were replaced by these new ones
+        for i in 0..20 {
+            assert!(col.get(&i).is_none());
+        }
+
+        // after cyclic inserts we still have a full capacity collection. We can remove one item...
+        assert!(col.remove(&20).is_some());
+        assert_eq!(col.size(), 9);
+
+        // ... and now inserting a new item will not replace any existing one
+        assert!(col.insert(31, 31).is_none());
+    }
+
+    #[test]
+    fn test_insert_duplicate() {
+        let mut col: CappedHashMap<u8, u8> = CappedHashMap::new(10);
+
+        for i in 0..10 {
+            col.insert(i, i);
+        }
+
+        assert_eq!(*col.get(&0).unwrap(), 0);
+        assert_eq!(col.size(), 10);
+
+        // replacing should simply replace the value and not affect the size.
+        // so altough our col is full capacity, replacing an existing should not remove the oldest item
+        assert!(col.insert(0, 2).is_none());
+        assert_eq!(*col.get(&0).unwrap(), 2);
+        assert_eq!(col.size(), 10);
+
+        // but inserting a new one should
+        let key_removed = col.insert(10, 10);
+        assert!(key_removed.is_some());
+        assert_eq!(key_removed.unwrap(), 0);
+        assert_eq!(col.size(), 10);
     }
 
     #[test]
     fn test_remove() {
-      let mut col: CappedHashMap<u8, u8> = CappedHashMap::new(10);
+        let mut col: CappedHashMap<u8, u8> = CappedHashMap::new(10);
 
-      for i in 0..10 {
-          col.insert(i, i);
-      }
+        for i in 0..10 {
+            col.insert(i, i);
+        }
 
-      for i in 0..10 {
-        let v = col.remove(&i);
-        assert!(v.is_some());
-        assert_eq!(v.unwrap(), i);
-        assert_eq!(col.size() as u8, 10 - i - 1);
-      }
+        for i in 0..10 {
+            let v = col.remove(&i);
+            assert!(v.is_some());
+            assert_eq!(v.unwrap(), i);
+            assert_eq!(col.size() as u8, 10 - i - 1);
+        }
 
-      // the collection is empty so the next remove should return None
-      let v = col.remove(&0);
-      assert!(v.is_none());
+        // the collection is empty so the next remove should return None
+        let v = col.remove(&0);
+        assert!(v.is_none());
     }
 }
