@@ -3,6 +3,7 @@
 use anyhow::Context;
 use secp256k1::hashes::Hash;
 
+pub mod address_verifier;
 pub mod committee;
 pub mod constants;
 pub mod frost;
@@ -10,7 +11,6 @@ pub mod json_rpc_stuff;
 pub mod plonk;
 pub mod snarkjs;
 pub mod srs;
-pub mod address_verifier;
 
 /// 1. Alice signs a transaction to deploy a smart contract.
 pub mod alice_sign_tx;
