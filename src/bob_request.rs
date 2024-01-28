@@ -108,6 +108,7 @@ pub struct BobRequest {
 }
 
 impl BobRequest {
+    #[allow(clippy::absurd_extreme_comparisons)]
     pub async fn new(
         rpc_ctx: &RpcCtx,
         bob_address: Address,
@@ -651,6 +652,7 @@ pub fn extract_smart_contract_from_tx(raw_tx: &Transaction) -> Result<SmartContr
 }
 
 /// Fetch the smart contract on-chain from the txid.
+#[allow(clippy::absurd_extreme_comparisons)]
 pub async fn fetch_smart_contract(ctx: &RpcCtx, txid: bitcoin::Txid) -> Result<SmartContract> {
     // fetch transaction + metadata based on txid
     debug!("- fetching txid {txid}", txid = txid);
