@@ -363,7 +363,7 @@ impl BobRequest {
             .input
             .iter()
             .find(|tx| tx.previous_output.txid == self.zkapp_tx.txid())
-            .context("the transaction ID that was passed in the request does not exist")?
+            .context("the zkapp transaction ID could not be found in the transaction's inputs")?
             .previous_output;
 
         Ok(outpoint)

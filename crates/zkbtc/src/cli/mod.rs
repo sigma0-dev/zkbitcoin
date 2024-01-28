@@ -1,5 +1,5 @@
-use std::path::PathBuf;
 use clap::{Parser, Subcommand};
+use std::path::PathBuf;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -105,5 +105,5 @@ pub enum Commands {
         /// The `user:password`` of the RPC full node.
         #[arg(env = "RPC_AUTH")]
         auth: Option<String>,
-    }
+    },
 }

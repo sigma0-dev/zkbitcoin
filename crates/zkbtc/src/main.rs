@@ -1,10 +1,11 @@
 mod cli;
 
-use std::{collections::HashMap, env, str::FromStr};
+use crate::cli::*;
 use anyhow::{ensure, Context, Result};
 use bitcoin::{Address, Txid};
 use clap::Parser;
 use log::info;
+use std::{collections::HashMap, env, str::FromStr};
 use tempdir::TempDir;
 use zkbitcoin_core::{
     alice_sign_tx::generate_and_broadcast_transaction,
@@ -19,7 +20,6 @@ use zkbitcoin_core::{
     snarkjs::{self, CompilationResult},
     taproot_addr_from,
 };
-use crate::cli::*;
 
 #[tokio::main]
 async fn main() -> Result<()> {
