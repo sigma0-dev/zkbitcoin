@@ -2,8 +2,8 @@ use std::{collections::HashMap, path::Path, str::FromStr, vec};
 
 use anyhow::{bail, ensure, Context, Result};
 use bitcoin::{
-    opcodes::all::OP_RETURN, script::Instruction, Address, Amount, Denomination, OutPoint, PublicKey,
-    Transaction, TxOut, Txid, Witness,
+    opcodes::all::OP_RETURN, script::Instruction, Address, Amount, Denomination, OutPoint,
+    PublicKey, Transaction, TxOut, Txid, Witness,
 };
 use log::{debug, info};
 use num_bigint::BigUint;
@@ -307,7 +307,7 @@ impl BobRequest {
             zkapp_inputs.len() == 1,
             "internal error: the transaction does not contain the zkapp being used or it contains duplicate inputs"
         );
-        
+
         // compute prev_outs as all the TxOut pointed out by the inputs
         let mut prev_outs = vec![];
         for (input_idx, input) in tx.input.iter().enumerate() {
@@ -352,7 +352,7 @@ impl BobRequest {
             .find(|tx| tx.previous_output.txid == self.zkapp_tx.txid())
             .context("couldn't find zkapp input in transaction")?
             .witness = witness;
-        
+
         Ok(transaction)
     }
 
@@ -365,7 +365,7 @@ impl BobRequest {
             .find(|tx| tx.previous_output.txid == self.zkapp_tx.txid())
             .context("the transaction ID that was passed in the request does not exist")?
             .previous_output;
-        
+
         Ok(outpoint)
 
         // TODO: do we care about other fields in txin and previous_output?
