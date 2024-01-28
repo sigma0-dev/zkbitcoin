@@ -312,11 +312,11 @@ mod tests {
 
         // dump private
         let serialized_private = private.serialize();
-        println!("private key: {}", hex::encode(&serialized_private));
+        println!("private key: {}", hex::encode(serialized_private));
 
         // dump pubkey
         let serialized_pubkey = pubkey.serialize();
-        println!("{}", hex::encode(&serialized_pubkey));
+        println!("{}", hex::encode(serialized_pubkey));
 
         // deserialize pubkey
         let deserialized_pubkey = bitcoin::PublicKey::from_slice(&serialized_pubkey).unwrap();
