@@ -17,7 +17,10 @@ use rand::thread_rng;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    bob_request::{BobRequest, SmartContract}, capped_hashmap::CappedHashMap, frost, mpc_sign_tx::get_digest_to_hash
+    bob_request::{BobRequest, SmartContract},
+    capped_hashmap::CappedHashMap,
+    frost,
+    mpc_sign_tx::get_digest_to_hash,
 };
 
 //
