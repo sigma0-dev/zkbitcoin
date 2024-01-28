@@ -8,7 +8,7 @@ Use **zero-knowledge applications (zkapps)** on Bitcoin! (**Currently only on te
 
 To use a zkapp, provide a correct proof of execution using [snarkjs](https://github.com/iden3/snarkjs) to our multi-party wallet which will trigger a threshold signature, eventually allowing funds to move out of the zkapp.
 
-[Check the whitepaper here](./whitepaper.pdf). You can also [watch a demo here](https://www.youtube.com/watch?v=2a0UYT5nbEA).
+📃 Read [the whitepaper](./whitepaper.pdf). 🎥 Watch [an overview of the project](https://www.youtube.com/watch?v=2a0UYT5nbEA), [a walkthrough of the whitepaper](https://www.youtube.com/watch?v=3Y-Z4nZB8FE), [a walkthrough of the codebase](https://www.youtube.com/watch?v=gSNrRPauIEA).
 
 ## Installation
 
