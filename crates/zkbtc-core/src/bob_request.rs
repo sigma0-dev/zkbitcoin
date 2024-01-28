@@ -3,7 +3,7 @@ use std::{collections::HashMap, path::Path, str::FromStr, vec};
 use anyhow::{bail, ensure, Context, Result};
 use bitcoin::{
     opcodes::all::OP_RETURN, script::Instruction, Address, Amount, Denomination, OutPoint,
-    PublicKey, Transaction, TxOut, Txid,
+    PublicKey, Transaction, TxOut, Txid, Witness,
 };
 use log::{debug, info};
 use num_bigint::BigUint;
@@ -88,10 +88,6 @@ pub struct BobRequest {
     /// as we need to deconstruct the txid of the input of `tx`.
     pub zkapp_tx: Transaction,
 
-    /// The index of the input that contains the zkapp being used.
-    // TODO: we should be able to infer this!
-    pub zkapp_input: usize,
-
     /// The verifier key authenticated by the deployed transaction.
     pub vk: plonk::VerifierKey,
 
@@ -108,6 +104,7 @@ pub struct BobRequest {
 }
 
 impl BobRequest {
+    #[allow(clippy::absurd_extreme_comparisons)]
     pub async fn new(
         rpc_ctx: &RpcCtx,
         bob_address: Address,
@@ -146,7 +143,7 @@ impl BobRequest {
             // extract new_state
             let new_state = public_inputs
                 .0
-                .get(0)
+                .first()
                 .cloned()
                 .context("the full public input does not contain a new state")?;
 
@@ -196,13 +193,13 @@ impl BobRequest {
                 let amount_in = string_to_amount(
                     proof_inputs
                         .get("amount_in")
-                        .and_then(|x| x.get(0))
+                        .and_then(|x| x.first())
                         .context("amount_in in proof inputs must be of length 1")?,
                 )?;
                 let amount_out = string_to_amount(
                     proof_inputs
                         .get("amount_out")
-                        .and_then(|x| x.get(0))
+                        .and_then(|x| x.first())
                         .context("amount_out in proof inputs must be of length 1")?,
                 )?;
                 let new_value = smart_contract.locked_value + amount_in - amount_out;
@@ -284,7 +281,7 @@ impl BobRequest {
             let new_state = new_state.unwrap();
             ensure!(
                 public_inputs.0.len()
-                    == 1 * 2 /* prev/new_state */ + 1 /* truncated txid */ + 1 /* amount_out */ + 1, /* amount_in */
+                    == 2 /* prev/new_state */ + 1 /* truncated txid */ + 1 /* amount_out */ + 1, /* amount_in */
                 "the number of public inputs is not correct"
             );
 
@@ -300,13 +297,16 @@ impl BobRequest {
         };
 
         // compute zkapp input as the input that uses the zkapp
-        let zkapp_input = tx
+        let zkapp_inputs = tx
             .input
             .iter()
-            .enumerate()
-            .find(|(_, x)| x.previous_output.txid == txid)
-            .context("internal error: the transaction does not contain the zkapp being used")?
-            .0;
+            .filter(|x| x.previous_output.txid == txid)
+            .collect::<Vec<_>>();
+
+        ensure!(
+            zkapp_inputs.len() == 1,
+            "internal error: the transaction does not contain the zkapp being used or it contains duplicate inputs"
+        );
 
         // compute prev_outs as all the TxOut pointed out by the inputs
         let mut prev_outs = vec![];
@@ -332,7 +332,6 @@ impl BobRequest {
         let res = Self {
             tx,
             zkapp_tx,
-            zkapp_input,
             vk,
             proof,
             update,
@@ -344,14 +343,31 @@ impl BobRequest {
         Ok(res)
     }
 
+    pub fn unlocked_tx(&self, witness: Witness) -> Result<Transaction> {
+        let mut transaction = self.tx.clone();
+
+        transaction
+            .input
+            .iter_mut()
+            .find(|tx| tx.previous_output.txid == self.zkapp_tx.txid())
+            .context("couldn't find zkapp input in transaction")?
+            .witness = witness;
+
+        Ok(transaction)
+    }
+
     /// The transaction ID and output index of the zkapp used in the request.
     fn zkapp_outpoint(&self) -> Result<OutPoint> {
-        let txin = self
+        let outpoint = self
             .tx
             .input
-            .get(self.zkapp_input)
-            .context("the transaction ID that was passed in the request does not exist")?;
-        Ok(txin.previous_output)
+            .iter()
+            .find(|tx| tx.previous_output.txid == self.zkapp_tx.txid())
+            .context("the transaction ID that was passed in the request does not exist")?
+            .previous_output;
+
+        Ok(outpoint)
+
         // TODO: do we care about other fields in txin and previous_output?
     }
 
@@ -435,13 +451,9 @@ impl BobRequest {
         let smart_contract = extract_smart_contract_from_tx(&self.zkapp_tx)?;
 
         // ensure that the zkapp_tx given is the one being used
-        let zkapp_outpoint = self
-            .tx
-            .input
-            .get(self.zkapp_input)
-            .context("the request zkapp_input is incorrect")?;
+        let zkapp_outpoint = self.zkapp_outpoint()?;
         ensure!(
-            smart_contract.txid == zkapp_outpoint.previous_output.txid,
+            smart_contract.txid == zkapp_outpoint.txid,
             "the zkapp_tx given is not the one being used"
         );
 
@@ -565,81 +577,6 @@ impl SmartContract {
     fn is_stateful(&self) -> bool {
         self.state.is_some()
     }
-
-    // Returns the amount that is being withdrawn from the smart contract, and the remaining amount in the contract (0 if stateless).
-    // fn calculate_split_funds(&self, request: &BobRequest) -> Result<(Amount, Amount)> {
-    //     if self.is_stateless() {
-    //         return Ok((self.locked_value, Amount::from_sat(0)));
-    //     }
-
-    //     let len_state = self.public_inputs.len();
-    //     let amount_offset = len_state * 2 + 1;
-    //     let zero = "0".to_string();
-    //     let amount = request.public_inputs.get(amount_offset).unwrap_or(&zero);
-
-    //     let bob_amount = {
-    //         // TODO: need to write a test here
-    //         let big = BigUint::from_str(amount).context("amount is not a u64 (err_code: 1)")?;
-    //         let big_u64s = big.to_u64_digits();
-    //         ensure!(big_u64s.len() == 1, "amount is not a u64 (err_code: 2)");
-    //         let u64res = amount
-    //             .parse::<u64>()
-    //             .context("amount is not a u64 (err_code: 3)")?;
-    //         ensure!(big_u64s[0] == u64res, "amount is not a u64 (err_code: 4)");
-    //         Amount::from_sat(u64res)
-    //     };
-
-    //     let remaining = self.locked_value - bob_amount;
-
-    //     Ok((bob_amount, remaining))
-    // }
-
-    // Ensures that there is enough $$ to cover for fees
-    // TODO: wait, is this relevant anymore? The transaction won't go through if there's not enough funds anyway
-    // fn check_remaining_funds(&self, request: &BobRequest) -> Result<()> {
-    //     // TODO: bitcoin fee shouldn't be a constant
-    //     // TODO: use https://crates.io/crates/bitcoin-fees or https://lib.rs/crates/bitcoinwallet-fees
-    //     let fees = Amount::from_sat(FEE_BITCOIN_SAT) + Amount::from_sat(FEE_ZKBITCOIN_SAT);
-
-    //     let remaining = if self.is_stateless() {
-    //         self.locked_value
-    //     } else {
-    //         let update = request
-    //             .update
-    //             .as_ref()
-    //             .context("no update present for a request using a stateful contract")?;
-
-    //         let len_state = self.public_inputs.len();
-    //         let amount_offset = len_state * 2 + 1;
-    //         let zero = "0".to_string();
-    //         let amount = request.public_inputs.get(amount_offset).unwrap_or(&zero);
-    //         let bob_amount = {
-    //             // TODO: need to write a test here
-    //             let big = BigUint::from_str(amount).context("amount is not a u64 (err_code: 1)")?;
-    //             let big_u64s = big.to_u64_digits();
-    //             ensure!(big_u64s.len() == 1, "amount is not a u64 (err_code: 2)");
-    //             let u64res = amount
-    //                 .parse::<u64>()
-    //                 .context("amount is not a u64 (err_code: 3)")?;
-    //             ensure!(big_u64s[0] == u64res, "amount is not a u64 (err_code: 4)");
-    //             Amount::from_sat(u64res)
-    //         };
-
-    //         ensure!(
-    //             self.locked_value >= bob_amount,
-    //             "there is not enough funds in the zkapp to cover for the withdrawal amount"
-    //         );
-
-    //         self.locked_value - bob_amount
-    //     };
-
-    //     ensure!(
-    //         remaining > fees,
-    //         "there is not enough funds in the zkapp to cover for bitcoin and zkBitcoin fees"
-    //     );
-
-    //     Ok(())
-    // }
 }
 
 pub fn parse_op_return_data(script: &bitcoin::ScriptBuf) -> Result<Vec<u8>> {
@@ -726,6 +663,7 @@ pub fn extract_smart_contract_from_tx(raw_tx: &Transaction) -> Result<SmartContr
 }
 
 /// Fetch the smart contract on-chain from the txid.
+#[allow(clippy::absurd_extreme_comparisons)]
 pub async fn fetch_smart_contract(ctx: &RpcCtx, txid: bitcoin::Txid) -> Result<SmartContract> {
     // fetch transaction + metadata based on txid
     debug!("- fetching txid {txid}", txid = txid);

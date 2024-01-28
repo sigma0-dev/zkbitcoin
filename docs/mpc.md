@@ -26,10 +26,6 @@ pub struct BobRequest {
     /// as we need to deconstruct the txid of the input of `tx`.
     pub zkapp_tx: Transaction,
 
-    /// The index of the input that contains the zkapp being used.
-    // TODO: we should be able to infer this!
-    pub zkapp_input: usize,
-
     /// The verifier key authenticated by the deployed transaction.
     pub vk: plonk::VerifierKey,
 

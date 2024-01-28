@@ -212,7 +212,7 @@ async fn round_2_signing(
 }
 
 async fn is_alive(params: Params<'static>, _context: Arc<NodeState>) -> RpcResult<u64> {
-    Ok(params.parse::<[u64; 1]>()?[0].clone())
+    Ok(params.parse::<[u64; 1]>()?[0])
 }
 
 //
