@@ -2,8 +2,8 @@ use std::{collections::HashMap, path::Path, str::FromStr, vec};
 
 use anyhow::{bail, ensure, Context, Result};
 use bitcoin::{
-    opcodes::all::OP_RETURN, script::Instruction, Address, Amount, Denomination, OutPoint,
-    PublicKey, Transaction, TxOut, Txid,
+    opcodes::all::OP_RETURN, script::Instruction, Address, Amount, Denomination, OutPoint, PublicKey,
+    Transaction, TxOut, Txid, Witness,
 };
 use log::{debug, info};
 use num_bigint::BigUint;
@@ -87,10 +87,6 @@ pub struct BobRequest {
     /// Note that for this optimization to work, we need the full transaction,
     /// as we need to deconstruct the txid of the input of `tx`.
     pub zkapp_tx: Transaction,
-
-    /// The index of the input that contains the zkapp being used.
-    // TODO: we should be able to infer this!
-    pub zkapp_input: usize,
 
     /// The verifier key authenticated by the deployed transaction.
     pub vk: plonk::VerifierKey,
@@ -301,14 +297,17 @@ impl BobRequest {
         };
 
         // compute zkapp input as the input that uses the zkapp
-        let zkapp_input = tx
+        let zkapp_inputs = tx
             .input
             .iter()
-            .enumerate()
-            .find(|(_, x)| x.previous_output.txid == txid)
-            .context("internal error: the transaction does not contain the zkapp being used")?
-            .0;
+            .filter(|x| x.previous_output.txid == txid)
+            .collect::<Vec<_>>();
 
+        ensure!(
+            zkapp_inputs.len() == 1,
+            "internal error: the transaction does not contain the zkapp being used or it contains duplicate inputs"
+        );
+        
         // compute prev_outs as all the TxOut pointed out by the inputs
         let mut prev_outs = vec![];
         for (input_idx, input) in tx.input.iter().enumerate() {
@@ -333,7 +332,6 @@ impl BobRequest {
         let res = Self {
             tx,
             zkapp_tx,
-            zkapp_input,
             vk,
             proof,
             update,
@@ -345,14 +343,31 @@ impl BobRequest {
         Ok(res)
     }
 
+    pub fn unlocked_tx(&self, witness: Witness) -> Result<Transaction> {
+        let mut transaction = self.tx.clone();
+
+        transaction
+            .input
+            .iter_mut()
+            .find(|tx| tx.previous_output.txid == self.zkapp_tx.txid())
+            .context("couldn't find zkapp input in transaction")?
+            .witness = witness;
+        
+        Ok(transaction)
+    }
+
     /// The transaction ID and output index of the zkapp used in the request.
     fn zkapp_outpoint(&self) -> Result<OutPoint> {
-        let txin = self
+        let outpoint = self
             .tx
             .input
-            .get(self.zkapp_input)
-            .context("the transaction ID that was passed in the request does not exist")?;
-        Ok(txin.previous_output)
+            .iter()
+            .find(|tx| tx.previous_output.txid == self.zkapp_tx.txid())
+            .context("the transaction ID that was passed in the request does not exist")?
+            .previous_output;
+        
+        Ok(outpoint)
+
         // TODO: do we care about other fields in txin and previous_output?
     }
 
@@ -436,13 +451,9 @@ impl BobRequest {
         let smart_contract = extract_smart_contract_from_tx(&self.zkapp_tx)?;
 
         // ensure that the zkapp_tx given is the one being used
-        let zkapp_outpoint = self
-            .tx
-            .input
-            .get(self.zkapp_input)
-            .context("the request zkapp_input is incorrect")?;
+        let zkapp_outpoint = self.zkapp_outpoint()?;
         ensure!(
-            smart_contract.txid == zkapp_outpoint.previous_output.txid,
+            smart_contract.txid == zkapp_outpoint.txid,
             "the zkapp_tx given is not the one being used"
         );
 
