@@ -20,10 +20,8 @@ where
     pub fn new(capacity: usize) -> Self {
         Self {
             capacity,
-            // We add a little bit margin to the capacity, because we always insert first and then check
-            // if collection is full. So we don't want the hashmap to double it's capacity because of that.
-            inner: HashMap::with_capacity(capacity + 1),
-            last_items: VecDeque::with_capacity(capacity + 1),
+            inner: HashMap::with_capacity(capacity),
+            last_items: VecDeque::with_capacity(capacity),
         }
     }
 
@@ -31,18 +29,19 @@ where
     /// key that was removed when we reach the max capacity. Otherwise returns None.
     pub fn insert(&mut self, k: K, v: V) -> Option<K> {
         let mut ret = None;
+        let new_key = !self.inner.contains_key(&k);
 
-        // replacing a value should not push any new items to last_items
-        if self.inner.insert(k, v).is_none() {
-            self.last_items.push_front(k);
-        }
-
-        if self.last_items.len() > self.capacity {
+        if new_key && self.last_items.len() >= self.capacity {
             // remove the oldest item. We an safely unwrap because we know the last_items is not empty at this point
             let key = self.last_items.pop_back().unwrap();
             assert!(self.remove(&key).is_some());
 
             ret = Some(key);
+        }
+
+        if new_key {
+            self.inner.insert(k, v);
+            self.last_items.push_front(k);
         }
 
         ret
@@ -54,8 +53,7 @@ where
             return None;
         };
 
-        self
-            .last_items
+        self.last_items
             .iter()
             .position(|key| key == k)
             .and_then(|pos| self.last_items.remove(pos));
@@ -108,7 +106,7 @@ mod tests {
             // the nth oldest key will be removed
             let key_removed = col.insert(i, i);
             // our hashmap and vecqueue should never grow i.e. capacity doesn't change
-            assert_eq!(col.last_items.capacity(), 11);
+            assert_eq!(col.last_items.capacity(), 10);
 
             assert!(key_removed.is_some());
             assert_eq!(key_removed.unwrap(), i - 10);
