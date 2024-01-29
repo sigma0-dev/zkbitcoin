@@ -148,4 +148,10 @@ impl AddressVerifier {
         .await
         .unwrap();
     }
+
+    /// Returns true if the given address is in the sanction list
+    pub async fn is_sanctioned(&self, address: &str) -> bool {
+      let sanctioned_addresses = self.sanctioned_addresses.read().await;
+      sanctioned_addresses.contains_key(address)
+    }
 }
