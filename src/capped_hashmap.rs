@@ -4,6 +4,8 @@ use std::{
     hash::Hash,
 };
 
+use log::info;
+
 pub struct CappedHashMap<K, V>
 where
     K: Hash + Eq + Copy + Clone,
@@ -25,6 +27,18 @@ where
         }
     }
 
+    fn log(&self) {
+      let count = self.last_items.len();
+
+      if count >= self.max_size * 90 / 100 {
+        info!("Over 90% full");
+      } else if count >= self.max_size / 2 {
+        info!("Over 50% full");
+      } else if count >= self.max_size / 4 {
+        info!("Over 25% full");
+      }
+    }
+
     /// Inserts an new key-value pair to the collection. Return Some(key) where key is the
     /// key that was removed when we reach the max capacity. Otherwise returns None.
     pub fn add_entry(&mut self, k: K, v: V) -> Option<K> {
@@ -44,6 +58,7 @@ where
             self.last_items.push_front(k);
         }
 
+        self.log();
         ret
     }
 
