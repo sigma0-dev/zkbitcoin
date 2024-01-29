@@ -19,11 +19,11 @@ where
 {
     pub fn new(capacity: usize) -> Self {
         Self {
+            capacity,
             // We add a little bit margin to the capacity, because we always insert first and then check
             // if collection is full. So we don't want the hashmap to double it's capacity because of that.
-            capacity: capacity + 1,
-            inner: HashMap::with_capacity(capacity),
-            last_items: VecDeque::with_capacity(capacity),
+            inner: HashMap::with_capacity(capacity + 1),
+            last_items: VecDeque::with_capacity(capacity + 1),
         }
     }
 
@@ -33,11 +33,11 @@ where
         let mut ret = None;
 
         // replacing a value should not push any new items to last_items
-        if let None = self.inner.insert(k, v) {
+        if self.inner.insert(k, v).is_none() {
             self.last_items.push_front(k);
         }
 
-        if self.last_items.len() > self.capacity - 1 {
+        if self.last_items.len() > self.capacity {
             // remove the oldest item. We an safely unwrap because we know the last_items is not empty at this point
             let key = self.last_items.pop_back().unwrap();
             assert!(self.remove(&key).is_some());
@@ -54,12 +54,11 @@ where
             return None;
         };
 
-        self.last_items = self
+        self
             .last_items
             .iter()
-            .filter(|key| *key != k)
-            .map(|key| *key)
-            .collect::<VecDeque<_>>();
+            .position(|key| key == k)
+            .and_then(|pos| self.last_items.remove(pos));
 
         Some(v)
     }
@@ -98,6 +97,7 @@ mod tests {
 
     #[test]
     fn test_insert_should_return_removed_key() {
+        // The real capacity will be 14. Read here for how this is calculated https://stackoverflow.com/a/76114888/512783
         let mut col: CappedHashMap<u8, u8> = CappedHashMap::new(10);
 
         for i in 0..10 {
@@ -107,6 +107,9 @@ mod tests {
         for i in 10..30 {
             // the nth oldest key will be removed
             let key_removed = col.insert(i, i);
+            // our hashmap and vecqueue should never grow i.e. capacity doesn't change
+            assert_eq!(col.last_items.capacity(), 11);
+
             assert!(key_removed.is_some());
             assert_eq!(key_removed.unwrap(), i - 10);
             assert_eq!(col.size(), 10);

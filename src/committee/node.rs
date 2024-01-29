@@ -17,10 +17,8 @@ use rand::thread_rng;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    bob_request::{BobRequest, SmartContract},
-    capped_hashmap::CappedHashMap,
-    frost,
-    mpc_sign_tx::get_digest_to_hash,
+    bob_request::{BobRequest, SmartContract}, capped_hashmap::CappedHashMap,
+    constants::MAX_SIGNING_TASK, frost, mpc_sign_tx::get_digest_to_hash,
 };
 
 //
@@ -35,7 +33,7 @@ pub struct NodeState {
     /// The public key stuff they need.
     pub pubkey_package: frost::PublicKeyPackage,
 
-    // TODO: ensure that this cannot grow like crazy? prune old tasks?
+    /// The current pending signing tasks
     pub signing_tasks: RwLock<CappedHashMap<Txid, LocalSigningTask>>,
 }
 
@@ -234,7 +232,7 @@ pub async fn run_server(
     let ctx = NodeState {
         key_package,
         pubkey_package,
-        signing_tasks: RwLock::new(CappedHashMap::new(100)),
+        signing_tasks: RwLock::new(CappedHashMap::new(MAX_SIGNING_TASK)),
     };
 
     let server = Server::builder()
