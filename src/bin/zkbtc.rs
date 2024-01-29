@@ -6,7 +6,6 @@ use clap::{Parser, Subcommand};
 use log::info;
 use tempdir::TempDir;
 use zkbitcoin::{
-    address_verifier::{self, AddressVerifier},
     alice_sign_tx::generate_and_broadcast_transaction,
     bob_request::{fetch_smart_contract, send_bob_request, BobRequest},
     committee::orchestrator::{CommitteeConfig, Member},

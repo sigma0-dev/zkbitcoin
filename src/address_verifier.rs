@@ -61,6 +61,60 @@ impl AddressVerifier {
         Ok(date)
     }
 
+    /// Runs the OFAC list syncronization. Downloads the remote XML file and extracts the sanctioned addresses
+    async fn sync(sanctioned_addresses: Arc<RwLock<HashMap<String, bool>>>) -> Result<()> {
+        info!("OFAC list syncing...");
+        let start = Instant::now();
+        let res =
+            reqwest::get("https://www.treasury.gov/ofac/downloads/sanctions/1.0/sdn_advanced.xml")
+                .await?;
+
+        let xml = res.text().await?;
+        let mut sanctioned_addresses = sanctioned_addresses.write().await;
+        let parser: EventReader<&[u8]> = EventReader::new(xml.as_bytes());
+        let mut inside_feature_elem = false;
+        let mut inside_final_elem = false;
+
+        for e in parser {
+            match e {
+                Ok(XmlEvent::StartElement {
+                    name, attributes, ..
+                }) => {
+                    if name.local_name == "Feature" {
+                        if attributes.iter().any(|a| {
+                            a.name.local_name == "FeatureTypeID" && a.value == Self::BTC_ID
+                        }) {
+                            inside_feature_elem = true;
+                        }
+                    } else if name.local_name == "VersionDetail" && inside_feature_elem {
+                        inside_final_elem = true;
+                    }
+                }
+                Ok(XmlEvent::Characters(value)) => {
+                    if inside_final_elem {
+                        sanctioned_addresses.insert(value, true);
+                    }
+                }
+                Ok(XmlEvent::EndElement { name, .. }) => {
+                    if name.local_name == "VersionDetail" && inside_feature_elem {
+                        inside_feature_elem = false;
+                        inside_final_elem = false;
+                    }
+                }
+                Err(e) => {
+                    error!("Error parsing xml: {e}");
+                    break;
+                }
+                _ => {}
+            }
+        }
+
+        let duration = start.elapsed();
+        info!("OFAC synced in {:?}", duration);
+
+        Ok(())
+    }
+
     /// Periodically fetces the latest list from https://www.treasury.gov/ofac/downloads/sanctions/1.0/sdn_advanced.xml
     /// and updates the list
     pub async fn start(&self) {
@@ -84,65 +138,12 @@ impl AddressVerifier {
                     continue;
                 }
 
-                let mut sanctioned_addresses = sanctioned_addresses.write().await;
-
                 let mut last_update = last_update.write().await;
                 *last_update = publish_date;
 
-                info!("OFAC list syncing...");
-                let start = Instant::now();
-                let Ok(res) = reqwest::get(
-                    "https://www.treasury.gov/ofac/downloads/sanctions/1.0/sdn_advanced.xml",
-                )
-                .await
-                else {
-                    error!("couldn't fetch OFAC list");
-                    continue;
+                if let Err(error) = Self::sync(Arc::clone(&sanctioned_addresses)).await {
+                  error!("OFAC list sync error: {}", error);
                 };
-                let Ok(xml) = res.text().await else {
-                    error!("couldn't parse OFAC list");
-                    continue;
-                };
-                let parser: EventReader<&[u8]> = EventReader::new(xml.as_bytes());
-                let mut inside_feature_elem = false;
-                let mut inside_final_elem = false;
-
-                for e in parser {
-                    match e {
-                        Ok(XmlEvent::StartElement {
-                            name, attributes, ..
-                        }) => {
-                            if name.local_name == "Feature" {
-                                if attributes.iter().any(|a| {
-                                    a.name.local_name == "FeatureTypeID" && a.value == Self::BTC_ID
-                                }) {
-                                    inside_feature_elem = true;
-                                }
-                            } else if name.local_name == "VersionDetail" && inside_feature_elem {
-                                inside_final_elem = true;
-                            }
-                        }
-                        Ok(XmlEvent::Characters(value)) => {
-                            if inside_final_elem {
-                                sanctioned_addresses.insert(value, true);
-                            }
-                        }
-                        Ok(XmlEvent::EndElement { name, .. }) => {
-                            if name.local_name == "VersionDetail" && inside_feature_elem {
-                                inside_feature_elem = false;
-                                inside_final_elem = false;
-                            }
-                        }
-                        Err(e) => {
-                            error!("Error parsing xml: {e}");
-                            break;
-                        }
-                        _ => {}
-                    }
-                }
-
-                let duration = start.elapsed();
-                info!("OFAC synced in {:?}", duration);
             }
         })
         .await
@@ -151,7 +152,7 @@ impl AddressVerifier {
 
     /// Returns true if the given address is in the sanction list
     pub async fn is_sanctioned(&self, address: &str) -> bool {
-      let sanctioned_addresses = self.sanctioned_addresses.read().await;
-      sanctioned_addresses.contains_key(address)
+        let sanctioned_addresses = self.sanctioned_addresses.read().await;
+        sanctioned_addresses.contains_key(address)
     }
 }
