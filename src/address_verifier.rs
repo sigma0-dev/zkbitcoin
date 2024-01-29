@@ -6,7 +6,7 @@ use log::{error, info};
 use std::{
     collections::HashMap,
     sync::Arc,
-    time::{Duration, Instant, UNIX_EPOCH},
+    time::{Duration, Instant},
 };
 use tokio::{spawn, sync::RwLock, time::interval};
 use xml::reader::{EventReader, XmlEvent};
@@ -77,6 +77,7 @@ impl AddressVerifier {
                 };
 
                 if *last_update.read().await >= publish_date {
+                    info!("OFAC list is up-to-date");
                     continue;
                 }
 
@@ -86,6 +87,7 @@ impl AddressVerifier {
                 let mut last_update = last_update.write().await;
                 *last_update = publish_date;
 
+                info!("OFAC list syncing...");
                 let start = Instant::now();
                 let Ok(res) = reqwest::get(
                     "https://www.treasury.gov/ofac/downloads/sanctions/1.0/sdn_advanced.xml",
@@ -138,7 +140,7 @@ impl AddressVerifier {
                 }
 
                 let duration = start.elapsed();
-                info!("OFAC list update exec time {:?}", duration);
+                info!("OFAC synced in {:?}", duration);
             }
         })
         .await
