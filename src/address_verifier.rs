@@ -71,18 +71,20 @@ impl AddressVerifier {
             let mut interval = interval(Duration::from_secs(600));
 
             loop {
+                interval.tick().await;
+
                 let Ok(publish_date) = Self::publish_date().await else {
                     error!("couldn't extract the OFAC document publish date");
                     continue;
                 };
 
+                info!("{:?}", *last_update.read().await);
                 if *last_update.read().await >= publish_date {
                     info!("OFAC list is up-to-date");
                     continue;
                 }
 
                 let mut sanctioned_addresses = sanctioned_addresses.write().await;
-                interval.tick().await;
 
                 let mut last_update = last_update.write().await;
                 *last_update = publish_date;
