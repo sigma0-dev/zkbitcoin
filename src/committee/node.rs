@@ -100,7 +100,7 @@ async fn round_1_signing(
     // store it locally
     {
         let mut signing_tasks = context.signing_tasks.write().unwrap();
-        signing_tasks.insert(
+        signing_tasks.add_entry(
             txid,
             LocalSigningTask {
                 proof_hash: bob_request.proof.hash(),

@@ -23,9 +23,9 @@ where
         }
     }
 
-    /// Inserts an new item to the collection. Return Some(key) where key is the
+    /// Inserts an new key-value pair to the collection. Return Some(key) where key is the
     /// key that was removed when we reach the max capacity. Otherwise returns None.
-    pub fn insert(&mut self, k: K, v: V) -> Option<K> {
+    pub fn add_entry(&mut self, k: K, v: V) -> Option<K> {
         let mut ret = None;
         let new_key = !self.inner.contains_key(&k);
 
@@ -82,9 +82,9 @@ mod tests {
     #[test]
     fn test_insert_into_non_full_collection() {
         let mut col: CappedHashMap<u8, u8> = CappedHashMap::new(10);
-        col.insert(1, 1);
-        col.insert(2, 2);
-        col.insert(3, 3);
+        col.add_entry(1, 1);
+        col.add_entry(2, 2);
+        col.add_entry(3, 3);
 
         assert_eq!(*col.get(&1).unwrap(), 1);
         assert_eq!(*col.get(&2).unwrap(), 2);
@@ -97,12 +97,12 @@ mod tests {
         let mut col: CappedHashMap<u8, u8> = CappedHashMap::new(10);
 
         for i in 0..10 {
-            col.insert(i, i);
+            col.add_entry(i, i);
         }
 
         for i in 10..30 {
             // the nth oldest key will be removed
-            let key_removed = col.insert(i, i);
+            let key_removed = col.add_entry(i, i);
             // our hashmap and vecqueue should never grow i.e. capacity doesn't change
             assert_eq!(col.last_items.capacity(), 10);
 
@@ -122,7 +122,7 @@ mod tests {
         assert_eq!(col.size(), 9);
 
         // ... and now inserting a new item will not replace any existing one
-        assert!(col.insert(31, 31).is_none());
+        assert!(col.add_entry(31, 31).is_none());
     }
 
     #[test]
@@ -130,7 +130,7 @@ mod tests {
         let mut col: CappedHashMap<u8, u8> = CappedHashMap::new(10);
 
         for i in 0..10 {
-            col.insert(i, i);
+            col.add_entry(i, i);
         }
 
         assert_eq!(*col.get(&0).unwrap(), 0);
@@ -138,12 +138,12 @@ mod tests {
 
         // replacing should simply replace the value and not affect the size.
         // so altough our col is full capacity, replacing an existing should not remove the oldest item
-        assert!(col.insert(0, 2).is_none());
+        assert!(col.add_entry(0, 2).is_none());
         assert_eq!(*col.get(&0).unwrap(), 2);
         assert_eq!(col.size(), 10);
 
         // but inserting a new one should
-        let key_removed = col.insert(10, 10);
+        let key_removed = col.add_entry(10, 10);
         assert!(key_removed.is_some());
         assert_eq!(key_removed.unwrap(), 0);
         assert_eq!(col.size(), 10);
@@ -154,7 +154,7 @@ mod tests {
         let mut col: CappedHashMap<u8, u8> = CappedHashMap::new(10);
 
         for i in 0..10 {
-            col.insert(i, i);
+            col.add_entry(i, i);
         }
 
         for i in 0..10 {
