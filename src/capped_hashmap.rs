@@ -8,7 +8,6 @@ pub struct CappedHashMap<K, V>
 where
     K: Hash + Eq + Copy + Clone,
 {
-    capacity: usize,
     inner: HashMap<K, V>,
     last_items: VecDeque<K>,
 }
@@ -19,7 +18,6 @@ where
 {
     pub fn new(capacity: usize) -> Self {
         Self {
-            capacity,
             inner: HashMap::with_capacity(capacity),
             last_items: VecDeque::with_capacity(capacity),
         }
@@ -31,7 +29,7 @@ where
         let mut ret = None;
         let new_key = !self.inner.contains_key(&k);
 
-        if new_key && self.last_items.len() >= self.capacity {
+        if new_key && self.last_items.len() >= self.last_items.capacity() {
             // remove the oldest item. We an safely unwrap because we know the last_items is not empty at this point
             let key = self.last_items.pop_back().unwrap();
             assert!(self.remove(&key).is_some());
@@ -39,8 +37,8 @@ where
             ret = Some(key);
         }
 
-        if new_key {
-            self.inner.insert(k, v);
+        // replacing a value should not push any new items to last_items
+        if self.inner.insert(k, v).is_none() {
             self.last_items.push_front(k);
         }
 
