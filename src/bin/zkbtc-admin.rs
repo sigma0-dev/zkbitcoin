@@ -1,12 +1,10 @@
-use std::path::PathBuf;
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use log::info;
+use std::path::PathBuf;
 use zkbitcoin::{
     committee::orchestrator::{CommitteeConfig, Member},
-    constants::{
-        ZKBITCOIN_FEE_PUBKEY, ZKBITCOIN_PUBKEY,
-    },
+    constants::{ZKBITCOIN_FEE_PUBKEY, ZKBITCOIN_PUBKEY},
     frost, taproot_addr_from,
 };
 
