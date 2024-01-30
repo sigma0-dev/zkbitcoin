@@ -4,6 +4,7 @@ use anyhow::Context;
 use secp256k1::hashes::Hash;
 
 pub mod address_verifier;
+pub mod capped_hashmap;
 pub mod committee;
 pub mod constants;
 pub mod frost;

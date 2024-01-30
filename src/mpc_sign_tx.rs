@@ -209,17 +209,17 @@ mod tests {
         };
 
         // fund that transaction with our wallet
-        let (tx_hex, _, _fee) = fund_raw_transaction(&ctx, TransactionOrHex::Transaction(&tx))
+        let (tx_hex, _, _fee) = fund_raw_transaction(ctx, TransactionOrHex::Transaction(&tx))
             .await
             .unwrap();
 
         // sign that transaction with our wallet
-        let (tx_hex, _) = sign_transaction(&ctx, TransactionOrHex::Hex(tx_hex))
+        let (tx_hex, _) = sign_transaction(ctx, TransactionOrHex::Hex(tx_hex))
             .await
             .unwrap();
 
         // broadcast it
-        let txid = send_raw_transaction(&ctx, TransactionOrHex::Hex(tx_hex))
+        let txid = send_raw_transaction(ctx, TransactionOrHex::Hex(tx_hex))
             .await
             .unwrap();
 

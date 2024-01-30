@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::BTreeMap,
     net::SocketAddr,
     sync::{Arc, RwLock},
 };
@@ -18,6 +18,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     bob_request::{BobRequest, SmartContract},
+    capped_hashmap::CappedHashMap,
+    constants::MAX_SIGNING_TASK,
     frost,
     mpc_sign_tx::get_digest_to_hash,
 };
@@ -34,8 +36,8 @@ pub struct NodeState {
     /// The public key stuff they need.
     pub pubkey_package: frost::PublicKeyPackage,
 
-    // TODO: ensure that this cannot grow like crazy? prune old tasks?
-    pub signing_tasks: RwLock<HashMap<Txid, LocalSigningTask>>,
+    /// The current pending signing tasks
+    pub signing_tasks: RwLock<CappedHashMap<Txid, LocalSigningTask>>,
 }
 
 #[derive(Clone)]
@@ -98,7 +100,7 @@ async fn round_1_signing(
     // store it locally
     {
         let mut signing_tasks = context.signing_tasks.write().unwrap();
-        signing_tasks.insert(
+        signing_tasks.add_entry(
             txid,
             LocalSigningTask {
                 proof_hash: bob_request.proof.hash(),
@@ -233,7 +235,7 @@ pub async fn run_server(
     let ctx = NodeState {
         key_package,
         pubkey_package,
-        signing_tasks: RwLock::new(HashMap::new()),
+        signing_tasks: RwLock::new(CappedHashMap::new(MAX_SIGNING_TASK)),
     };
 
     let server = Server::builder()
