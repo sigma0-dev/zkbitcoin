@@ -64,7 +64,7 @@ pub struct LocalSigningTask {
 Members keep track of such signing tasks in a local hashmap:
 
 ```rust
-signing_tasks: RwLock<HashMap<Txid, LocalSigningTask>>
+signing_tasks: RwLock<CappedHashMap<Txid, LocalSigningTask>>
 ```
 
 The commitments created at this point are sent back to the orchestrator:

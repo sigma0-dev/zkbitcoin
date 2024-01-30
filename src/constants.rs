@@ -43,3 +43,5 @@ pub const KEEPALIVE_WAIT_SECONDS: u64 = 5;
 
 /// The total number of fibonacci backoff retries before considering an MPC node offline
 pub const KEEPALIVE_MAX_RETRIES: u8 = 10;
+
+pub const MAX_SIGNING_TASK: usize = 100;
