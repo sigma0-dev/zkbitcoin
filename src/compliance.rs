@@ -73,7 +73,7 @@ impl Compliance {
     }
 
     /// Runs the Sanction list syncronization. Downloads the remote XML file and extracts the sanctioned addresses
-    pub async fn sync_internal(
+    async fn sync_internal(
         sanctioned_addresses: Arc<RwLock<HashMap<String, bool>>>,
         last_update: Arc<RwLock<i64>>,
     ) -> Result<()> {
