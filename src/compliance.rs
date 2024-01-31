@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use bitcoin::Address;
 use chrono::prelude::*;
 use fancy_regex::Regex;
 use futures::StreamExt;
@@ -157,8 +158,8 @@ impl Compliance {
     }
 
     /// Returns true if the given address is in the sanction list
-    pub async fn is_sanctioned(&self, address: &str) -> bool {
+    pub async fn is_sanctioned(&self, address: &Address) -> bool {
         let sanctioned_addresses = self.sanctioned_addresses.read().await;
-        sanctioned_addresses.contains_key(address)
+        sanctioned_addresses.contains_key(&address.to_string())
     }
 }

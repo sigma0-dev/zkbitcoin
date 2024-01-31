@@ -290,6 +290,9 @@ impl Orchestrator {
     /// Handles bob request from A to Z.
     pub async fn handle_request(&self, bob_request: &BobRequest) -> Result<BobResponse> {
         // Validate transaction before forwarding it, and get smart contract
+        bob_request
+            .check_compliance(Arc::clone(&self.compliance))
+            .await?;
         let smart_contract = bob_request.validate_request().await?;
 
         // TODO: we might want to check that the zkapp/UTXO is unspent here, but this requires us to have access to a bitcoin node, so for now we don't do it :o)
@@ -588,6 +591,8 @@ pub async fn run_server(
         member_status_state,
         Arc::clone(&compliance),
     );
+
+    // Sync sanction list in a parallel thread
     compliance.start();
 
     let server = Server::builder()
