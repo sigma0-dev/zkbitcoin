@@ -233,8 +233,9 @@ pub async fn run_server(
         id = key_package.identifier()
     );
 
-    // Setup address verifier
-    let address_verifier = AddressVerifier::new();
+    // Node should sync the Sanction ist before doing anything else
+    let address_verifier: &'static mut AddressVerifier = Box::leak(Box::new(AddressVerifier::new()));
+    address_verifier.sync().await?;
 
     let ctx = NodeState {
         key_package,

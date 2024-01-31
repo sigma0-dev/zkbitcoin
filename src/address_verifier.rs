@@ -5,15 +5,14 @@ use futures::StreamExt;
 use log::{error, info};
 use std::{
     collections::HashMap,
-    sync::Arc,
     time::{Duration, Instant},
 };
-use tokio::{spawn, sync::RwLock, task::JoinHandle, time::interval};
+use tokio::{spawn, task::JoinHandle, time::interval};
 use xml::reader::{EventReader, XmlEvent};
 
 pub struct AddressVerifier {
-    sanctioned_addresses: Arc<RwLock<HashMap<String, bool>>>,
-    last_update: Arc<RwLock<i64>>,
+    sanctioned_addresses: HashMap<String, bool>,
+    last_update: i64,
 }
 
 impl AddressVerifier {
@@ -23,8 +22,8 @@ impl AddressVerifier {
 
     pub fn new() -> Self {
         Self {
-            sanctioned_addresses: Arc::new(RwLock::new(HashMap::new())),
-            last_update: Arc::new(RwLock::new(0)),
+            sanctioned_addresses: HashMap::new(),
+            last_update: 0,
         }
     }
 
@@ -62,13 +61,12 @@ impl AddressVerifier {
     }
 
     /// Runs the OFAC list syncronization. Downloads the remote XML file and extracts the sanctioned addresses
-    pub async fn sync(sanctioned_addresses: Arc<RwLock<HashMap<String, bool>>>) -> Result<()> {
+    pub async fn sync(&mut self) -> Result<()> {
         info!("OFAC list syncing...");
         let start = Instant::now();
         let res = reqwest::get(Self::OFAC_URL).await?;
 
         let xml = res.text().await?;
-        let mut sanctioned_addresses = sanctioned_addresses.write().await;
         let parser: EventReader<&[u8]> = EventReader::new(xml.as_bytes());
         let mut inside_feature_elem = false;
         let mut inside_final_elem = false;
@@ -90,7 +88,7 @@ impl AddressVerifier {
                 }
                 Ok(XmlEvent::Characters(value)) => {
                     if inside_final_elem {
-                        sanctioned_addresses.insert(value, true);
+                        self.sanctioned_addresses.insert(value, true);
                     }
                 }
                 Ok(XmlEvent::EndElement { name, .. }) => {
@@ -114,10 +112,7 @@ impl AddressVerifier {
     }
 
     /// Periodically fetces the latest list from OFAC_URL and updates the local list
-    pub async fn start(&self) -> JoinHandle<()> {
-        let sanctioned_addresses = Arc::clone(&self.sanctioned_addresses);
-        let last_update = Arc::clone(&self.last_update);
-
+    pub async fn start(&'static mut self) -> JoinHandle<()> {
         spawn(async move {
             let mut interval = interval(Duration::from_secs(600));
 
@@ -129,16 +124,14 @@ impl AddressVerifier {
                     continue;
                 };
 
-                info!("{:?}", *last_update.read().await);
-                if *last_update.read().await >= publish_date {
+                if self.last_update >= publish_date {
                     info!("OFAC list is up-to-date");
                     continue;
                 }
 
-                let mut last_update = last_update.write().await;
-                *last_update = publish_date;
+                self.last_update = publish_date;
 
-                if let Err(error) = Self::sync(Arc::clone(&sanctioned_addresses)).await {
+                if let Err(error) = self.sync().await {
                     error!("OFAC list sync error: {}", error);
                 };
             }
@@ -147,7 +140,6 @@ impl AddressVerifier {
 
     /// Returns true if the given address is in the sanction list
     pub async fn is_sanctioned(&self, address: &str) -> bool {
-        let sanctioned_addresses = self.sanctioned_addresses.read().await;
-        sanctioned_addresses.contains_key(address)
+        self.sanctioned_addresses.contains_key(address)
     }
 }
