@@ -25,7 +25,13 @@ use serde::{Deserialize, Serialize};
 use tokio::time::sleep;
 
 use crate::{
-    bob_request::{BobRequest, BobResponse}, committee::node::Round1Response, compliance::Compliance, constants::{KEEPALIVE_MAX_RETRIES, KEEPALIVE_WAIT_SECONDS, ZKBITCOIN_PUBKEY}, frost, json_rpc_stuff::{json_rpc_request, RpcCtx}, mpc_sign_tx::get_digest_to_hash
+    bob_request::{BobRequest, BobResponse},
+    committee::node::Round1Response,
+    compliance::Compliance,
+    constants::{KEEPALIVE_MAX_RETRIES, KEEPALIVE_WAIT_SECONDS, ZKBITCOIN_PUBKEY},
+    frost,
+    json_rpc_stuff::{json_rpc_request, RpcCtx},
+    mpc_sign_tx::get_digest_to_hash,
 };
 
 use super::node::{Round2Request, Round2Response};
@@ -263,6 +269,7 @@ pub struct Orchestrator {
     pub pubkey_package: frost_secp256k1_tr::keys::PublicKeyPackage,
     pub committee_cfg: CommitteeConfig,
     pub member_status: Arc<RwLock<MemberStatusState>>,
+    compliance: Arc<Compliance>,
 }
 
 impl Orchestrator {
@@ -270,11 +277,13 @@ impl Orchestrator {
         pubkey_package: frost_secp256k1_tr::keys::PublicKeyPackage,
         committee_cfg: CommitteeConfig,
         member_status: Arc<RwLock<MemberStatusState>>,
+        compliance: Arc<Compliance>,
     ) -> Self {
         Self {
             pubkey_package,
             committee_cfg,
             member_status,
+            compliance,
         }
     }
 
@@ -562,19 +571,24 @@ pub async fn run_server(
     let address = address.unwrap_or("127.0.0.1:6666");
     info!("- starting orchestrator at address http://{address}");
 
+    let mut compliance = Compliance::new();
+    compliance.sync().await.expect("sync sanction list");
+
+    let compliance: Arc<Compliance> = Arc::new(compliance);
     // Orchestrator should sync the Sanction ist before doing anything else
-    let compliance: &'static mut Compliance = Box::leak(Box::new(Compliance::new()));
-    compliance.sync().await?;
 
     let member_status_state = Arc::new(RwLock::new(MemberStatusState::new(&committee_cfg).await));
     let mss_thread_copy = member_status_state.clone();
     tokio::spawn(async move { MemberStatusState::keepalive_thread(mss_thread_copy).await });
 
-    let ctx = Orchestrator {
+    let ctx = Orchestrator::new(
         pubkey_package,
         committee_cfg,
-        member_status: member_status_state,
-    };
+        member_status_state,
+        compliance,
+    );
+    // let compliance = ctx.compliance.write().await;
+    // compliance.start();
 
     let server = Server::builder()
         .build(address.parse::<SocketAddr>()?)
@@ -585,7 +599,6 @@ pub async fn run_server(
 
     let addr = server.local_addr()?;
     let handle = server.start(module);
-    compliance.start();
 
     handle.stopped().await;
 

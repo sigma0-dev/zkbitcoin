@@ -5,14 +5,15 @@ use futures::StreamExt;
 use log::{error, info};
 use std::{
     collections::HashMap,
+    sync::Arc,
     time::{Duration, Instant},
 };
-use tokio::{spawn, task::JoinHandle, time::interval};
+use tokio::{spawn, sync::RwLock, task::JoinHandle, time::interval};
 use xml::reader::{EventReader, XmlEvent};
 
 pub struct Compliance {
-    sanctioned_addresses: HashMap<String, bool>,
-    last_update: i64,
+    sanctioned_addresses: Arc<RwLock<HashMap<String, bool>>>,
+    last_update: Arc<RwLock<i64>>,
 }
 
 impl Compliance {
@@ -22,8 +23,8 @@ impl Compliance {
 
     pub fn new() -> Self {
         Self {
-            sanctioned_addresses: HashMap::new(),
-            last_update: 0,
+            sanctioned_addresses: Arc::new(RwLock::new(HashMap::new())),
+            last_update: Arc::new(RwLock::new(0)),
         }
     }
 
@@ -60,15 +61,30 @@ impl Compliance {
         Ok(date)
     }
 
-    /// Runs the Sanction list syncronization. Downloads the remote XML file and extracts the sanctioned addresses
     pub async fn sync(&mut self) -> Result<()> {
+        Self::sync_internal(
+            Arc::clone(&self.sanctioned_addresses),
+            Arc::clone(&self.last_update),
+        )
+        .await?;
+
+        Ok(())
+    }
+
+    /// Runs the Sanction list syncronization. Downloads the remote XML file and extracts the sanctioned addresses
+    pub async fn sync_internal(
+        sanctioned_addresses: Arc<RwLock<HashMap<String, bool>>>,
+        last_update: Arc<RwLock<i64>>,
+    ) -> Result<()> {
         let publish_date = Self::publish_date().await?;
-        if self.last_update >= publish_date {
+
+        if *last_update.read().await >= publish_date {
             info!("Sanction list is up-to-date");
             return Ok(());
         }
 
-        self.last_update = publish_date;
+        let mut last_update = last_update.write().await;
+        *last_update = publish_date;
 
         info!("Syncing sanction list...");
         let start = Instant::now();
@@ -79,6 +95,7 @@ impl Compliance {
         let mut inside_feature_elem = false;
         let mut inside_final_elem = false;
 
+        let mut sanctioned_addresses = sanctioned_addresses.write().await;
         for e in parser {
             match e {
                 Ok(XmlEvent::StartElement {
@@ -96,7 +113,7 @@ impl Compliance {
                 }
                 Ok(XmlEvent::Characters(value)) => {
                     if inside_final_elem {
-                        self.sanctioned_addresses.insert(value, true);
+                        sanctioned_addresses.insert(value, true);
                     }
                 }
                 Ok(XmlEvent::EndElement { name, .. }) => {
@@ -120,14 +137,19 @@ impl Compliance {
     }
 
     /// Periodically fetces the latest list from OFAC_URL and updates the local list
-    pub fn start(&'static mut self) -> JoinHandle<()> {
+    pub fn start(&self) -> JoinHandle<()> {
+        let sanctioned_addresses = Arc::clone(&self.sanctioned_addresses);
+        let last_update = Arc::clone(&self.last_update);
+
         spawn(async move {
             let mut interval = interval(Duration::from_secs(600));
 
             loop {
                 interval.tick().await;
-
-                if let Err(error) = self.sync().await {
+                if let Err(error) =
+                    Self::sync_internal(Arc::clone(&sanctioned_addresses), Arc::clone(&last_update))
+                        .await
+                {
                     error!("Sanction list sync error: {}", error);
                 };
             }
@@ -136,6 +158,7 @@ impl Compliance {
 
     /// Returns true if the given address is in the sanction list
     pub async fn is_sanctioned(&self, address: &str) -> bool {
-        self.sanctioned_addresses.contains_key(address)
+        let sanctioned_addresses = self.sanctioned_addresses.read().await;
+        sanctioned_addresses.contains_key(address)
     }
 }
