@@ -17,9 +17,9 @@ use rand::thread_rng;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    address_verifier::AddressVerifier,
     bob_request::{BobRequest, SmartContract},
     capped_hashmap::CappedHashMap,
+    compliance::Compliance,
     constants::MAX_SIGNING_TASK,
     frost,
     mpc_sign_tx::get_digest_to_hash,
@@ -234,9 +234,8 @@ pub async fn run_server(
     );
 
     // Node should sync the Sanction ist before doing anything else
-    let address_verifier: &'static mut AddressVerifier =
-        Box::leak(Box::new(AddressVerifier::new()));
-    address_verifier.sync().await?;
+    let compliance: &'static mut Compliance = Box::leak(Box::new(Compliance::new()));
+    compliance.sync().await?;
 
     let ctx = NodeState {
         key_package,
@@ -255,8 +254,7 @@ pub async fn run_server(
 
     let addr = server.local_addr()?;
     let handle = server.start(module);
-    address_verifier.start().await.expect("Fatal error in the compiance module");
-    
+    compliance.start();
     handle.stopped().await;
 
     Ok(addr)

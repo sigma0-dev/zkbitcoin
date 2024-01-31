@@ -10,12 +10,12 @@ use std::{
 use tokio::{spawn, task::JoinHandle, time::interval};
 use xml::reader::{EventReader, XmlEvent};
 
-pub struct AddressVerifier {
+pub struct Compliance {
     sanctioned_addresses: HashMap<String, bool>,
     last_update: i64,
 }
 
-impl AddressVerifier {
+impl Compliance {
     const BTC_ID: &'static str = "344";
     const OFAC_URL: &'static str =
         "https://www.treasury.gov/ofac/downloads/sanctions/1.0/sdn_advanced.xml";
