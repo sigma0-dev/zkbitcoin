@@ -254,6 +254,7 @@ pub async fn run_server(
 
     let addr = server.local_addr()?;
     let handle = server.start(module);
+    address_verifier.start().await;
 
     handle.stopped().await;
 
