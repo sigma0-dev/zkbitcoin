@@ -572,10 +572,11 @@ pub async fn run_server(
     info!("- starting orchestrator at address http://{address}");
 
     let mut compliance = Compliance::new();
+    // Orchestrator should sync the Sanction ist before doing anything else
     compliance.sync().await.expect("sync sanction list");
 
+    // wrap in an Arc after the first sync so it can be used in multiple request contexts
     let compliance: Arc<Compliance> = Arc::new(compliance);
-    // Orchestrator should sync the Sanction ist before doing anything else
 
     let member_status_state = Arc::new(RwLock::new(MemberStatusState::new(&committee_cfg).await));
     let mss_thread_copy = member_status_state.clone();
@@ -585,10 +586,9 @@ pub async fn run_server(
         pubkey_package,
         committee_cfg,
         member_status_state,
-        compliance,
+        Arc::clone(&compliance),
     );
-    // let compliance = ctx.compliance.write().await;
-    // compliance.start();
+    compliance.start();
 
     let server = Server::builder()
         .build(address.parse::<SocketAddr>()?)
