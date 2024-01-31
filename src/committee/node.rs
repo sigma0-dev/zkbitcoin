@@ -255,8 +255,8 @@ pub async fn run_server(
 
     let addr = server.local_addr()?;
     let handle = server.start(module);
-    address_verifier.start().await;
-
+    address_verifier.start().await.expect("Fatal error in the compiance module");
+    
     handle.stopped().await;
 
     Ok(addr)

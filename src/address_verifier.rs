@@ -60,17 +60,17 @@ impl AddressVerifier {
         Ok(date)
     }
 
-    /// Runs the OFAC list syncronization. Downloads the remote XML file and extracts the sanctioned addresses
+    /// Runs the Sanction list syncronization. Downloads the remote XML file and extracts the sanctioned addresses
     pub async fn sync(&mut self) -> Result<()> {
         let publish_date = Self::publish_date().await?;
         if self.last_update >= publish_date {
-            info!("OFAC list is up-to-date");
+            info!("Sanction list is up-to-date");
             return Ok(());
         }
 
         self.last_update = publish_date;
 
-        info!("OFAC list syncing...");
+        info!("Syncing sanction list...");
         let start = Instant::now();
         let res = reqwest::get(Self::OFAC_URL).await?;
 
@@ -114,13 +114,13 @@ impl AddressVerifier {
         }
 
         let duration = start.elapsed();
-        info!("OFAC synced in {:?}", duration);
+        info!("Sanction list synced in {:?}", duration);
 
         Ok(())
     }
 
     /// Periodically fetces the latest list from OFAC_URL and updates the local list
-    pub async fn start(&'static mut self) -> JoinHandle<()> {
+    pub fn start(&'static mut self) -> JoinHandle<()> {
         spawn(async move {
             let mut interval = interval(Duration::from_secs(600));
 
@@ -128,7 +128,7 @@ impl AddressVerifier {
                 interval.tick().await;
 
                 if let Err(error) = self.sync().await {
-                    error!("OFAC list sync error: {}", error);
+                    error!("Sanction list sync error: {}", error);
                 };
             }
         })
