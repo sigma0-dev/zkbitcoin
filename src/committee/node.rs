@@ -19,7 +19,6 @@ use serde::{Deserialize, Serialize};
 use crate::{
     bob_request::{BobRequest, SmartContract},
     capped_hashmap::CappedHashMap,
-    compliance::Compliance,
     constants::MAX_SIGNING_TASK,
     frost,
     mpc_sign_tx::get_digest_to_hash,
@@ -233,10 +232,6 @@ pub async fn run_server(
         id = key_package.identifier()
     );
 
-    // Node should sync the Sanction ist before doing anything else
-    let compliance: &'static mut Compliance = Box::leak(Box::new(Compliance::new()));
-    compliance.sync().await?;
-
     let ctx = NodeState {
         key_package,
         pubkey_package,
@@ -254,7 +249,7 @@ pub async fn run_server(
 
     let addr = server.local_addr()?;
     let handle = server.start(module);
-    compliance.start();
+
     handle.stopped().await;
 
     Ok(addr)

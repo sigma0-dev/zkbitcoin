@@ -25,12 +25,7 @@ use serde::{Deserialize, Serialize};
 use tokio::time::sleep;
 
 use crate::{
-    bob_request::{BobRequest, BobResponse},
-    committee::node::Round1Response,
-    constants::{KEEPALIVE_MAX_RETRIES, KEEPALIVE_WAIT_SECONDS, ZKBITCOIN_PUBKEY},
-    frost,
-    json_rpc_stuff::{json_rpc_request, RpcCtx},
-    mpc_sign_tx::get_digest_to_hash,
+    bob_request::{BobRequest, BobResponse}, committee::node::Round1Response, compliance::Compliance, constants::{KEEPALIVE_MAX_RETRIES, KEEPALIVE_WAIT_SECONDS, ZKBITCOIN_PUBKEY}, frost, json_rpc_stuff::{json_rpc_request, RpcCtx}, mpc_sign_tx::get_digest_to_hash
 };
 
 use super::node::{Round2Request, Round2Response};
@@ -567,6 +562,10 @@ pub async fn run_server(
     let address = address.unwrap_or("127.0.0.1:6666");
     info!("- starting orchestrator at address http://{address}");
 
+    // Orchestrator should sync the Sanction ist before doing anything else
+    let compliance: &'static mut Compliance = Box::leak(Box::new(Compliance::new()));
+    compliance.sync().await?;
+
     let member_status_state = Arc::new(RwLock::new(MemberStatusState::new(&committee_cfg).await));
     let mss_thread_copy = member_status_state.clone();
     tokio::spawn(async move { MemberStatusState::keepalive_thread(mss_thread_copy).await });
@@ -586,6 +585,7 @@ pub async fn run_server(
 
     let addr = server.local_addr()?;
     let handle = server.start(module);
+    compliance.start();
 
     handle.stopped().await;
 
