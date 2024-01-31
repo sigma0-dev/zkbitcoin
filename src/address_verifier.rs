@@ -62,6 +62,14 @@ impl AddressVerifier {
 
     /// Runs the OFAC list syncronization. Downloads the remote XML file and extracts the sanctioned addresses
     pub async fn sync(&mut self) -> Result<()> {
+        let publish_date = Self::publish_date().await?;
+        if self.last_update >= publish_date {
+            info!("OFAC list is up-to-date");
+            return Ok(());
+        }
+
+        self.last_update = publish_date;
+
         info!("OFAC list syncing...");
         let start = Instant::now();
         let res = reqwest::get(Self::OFAC_URL).await?;
@@ -118,18 +126,6 @@ impl AddressVerifier {
 
             loop {
                 interval.tick().await;
-
-                let Ok(publish_date) = Self::publish_date().await else {
-                    error!("couldn't extract the OFAC document publish date");
-                    continue;
-                };
-
-                if self.last_update >= publish_date {
-                    info!("OFAC list is up-to-date");
-                    continue;
-                }
-
-                self.last_update = publish_date;
 
                 if let Err(error) = self.sync().await {
                     error!("OFAC list sync error: {}", error);

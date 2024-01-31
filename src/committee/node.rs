@@ -234,7 +234,8 @@ pub async fn run_server(
     );
 
     // Node should sync the Sanction ist before doing anything else
-    let address_verifier: &'static mut AddressVerifier = Box::leak(Box::new(AddressVerifier::new()));
+    let address_verifier: &'static mut AddressVerifier =
+        Box::leak(Box::new(AddressVerifier::new()));
     address_verifier.sync().await?;
 
     let ctx = NodeState {
