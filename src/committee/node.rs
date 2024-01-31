@@ -17,6 +17,7 @@ use rand::thread_rng;
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    address_verifier::AddressVerifier,
     bob_request::{BobRequest, SmartContract},
     capped_hashmap::CappedHashMap,
     constants::MAX_SIGNING_TASK,
@@ -231,6 +232,9 @@ pub async fn run_server(
         "- starting node for identifier {id:?} at address http://{address}",
         id = key_package.identifier()
     );
+
+    // Setup address verifier
+    let address_verifier = AddressVerifier::new();
 
     let ctx = NodeState {
         key_package,

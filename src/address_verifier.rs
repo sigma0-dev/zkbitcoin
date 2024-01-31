@@ -8,7 +8,7 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
-use tokio::{spawn, sync::RwLock, time::interval};
+use tokio::{spawn, sync::RwLock, task::JoinHandle, time::interval};
 use xml::reader::{EventReader, XmlEvent};
 
 pub struct AddressVerifier {
@@ -18,6 +18,8 @@ pub struct AddressVerifier {
 
 impl AddressVerifier {
     const BTC_ID: &'static str = "344";
+    const OFAC_URL: &'static str =
+        "https://www.treasury.gov/ofac/downloads/sanctions/1.0/sdn_advanced.xml";
 
     pub fn new() -> Self {
         Self {
@@ -36,9 +38,7 @@ impl AddressVerifier {
     /// read the first few bytes from the remote XML file and extract the last update date.
     /// If there is no fresh data we can skip the parsing of XML which is slow.
     async fn publish_date() -> Result<i64> {
-        let res =
-            reqwest::get("https://www.treasury.gov/ofac/downloads/sanctions/1.0/sdn_advanced.xml")
-                .await?;
+        let res = reqwest::get(Self::OFAC_URL).await?;
 
         let head = res
             .bytes_stream()
@@ -62,12 +62,10 @@ impl AddressVerifier {
     }
 
     /// Runs the OFAC list syncronization. Downloads the remote XML file and extracts the sanctioned addresses
-    async fn sync(sanctioned_addresses: Arc<RwLock<HashMap<String, bool>>>) -> Result<()> {
+    pub async fn sync(sanctioned_addresses: Arc<RwLock<HashMap<String, bool>>>) -> Result<()> {
         info!("OFAC list syncing...");
         let start = Instant::now();
-        let res =
-            reqwest::get("https://www.treasury.gov/ofac/downloads/sanctions/1.0/sdn_advanced.xml")
-                .await?;
+        let res = reqwest::get(Self::OFAC_URL).await?;
 
         let xml = res.text().await?;
         let mut sanctioned_addresses = sanctioned_addresses.write().await;
@@ -115,9 +113,8 @@ impl AddressVerifier {
         Ok(())
     }
 
-    /// Periodically fetces the latest list from https://www.treasury.gov/ofac/downloads/sanctions/1.0/sdn_advanced.xml
-    /// and updates the list
-    pub async fn start(&self) {
+    /// Periodically fetces the latest list from OFAC_URL and updates the local list
+    pub async fn start(&self) -> JoinHandle<()> {
         let sanctioned_addresses = Arc::clone(&self.sanctioned_addresses);
         let last_update = Arc::clone(&self.last_update);
 
@@ -142,12 +139,10 @@ impl AddressVerifier {
                 *last_update = publish_date;
 
                 if let Err(error) = Self::sync(Arc::clone(&sanctioned_addresses)).await {
-                  error!("OFAC list sync error: {}", error);
+                    error!("OFAC list sync error: {}", error);
                 };
             }
         })
-        .await
-        .unwrap();
     }
 
     /// Returns true if the given address is in the sanction list
