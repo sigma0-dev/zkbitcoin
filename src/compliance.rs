@@ -17,6 +17,12 @@ pub struct Compliance {
     last_update: Arc<RwLock<i64>>,
 }
 
+impl Default for Compliance {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Compliance {
     const BTC_ID: &'static str = "344";
     const OFAC_URL: &'static str =
@@ -31,7 +37,7 @@ impl Compliance {
 
     fn extract_from_xml(str_value: &str, tag: &str) -> Result<u32> {
         let re = Regex::new(&format!(r"(?<={}>)\s*(\w+)(?=<\/{})", tag, tag)).unwrap();
-        let value = re.find(&str_value)?.context("no regex result")?.as_str();
+        let value = re.find(str_value)?.context("no regex result")?.as_str();
 
         Ok(value.parse()?)
     }
