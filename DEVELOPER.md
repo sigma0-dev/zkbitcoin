@@ -56,7 +56,7 @@ docker pull imikushin/zkbitcoin
 
 ```shell
 docker create --restart=always -v keys:/keys --name zkbtc-node -p 8891:8891 imikushin/zkbitcoin \
-  zkbtc start-committee-node \
+  zkbtc-admin start-committee-node \
   --key-path=/keys/key.json --publickey-package-path=/keys/publickey-package.json \
   --address=0.0.0.0:8891
 ```
@@ -113,19 +113,19 @@ Now re-run steps 2 and 4 from above: create the container and then start it (the
 ### Generate committee with trusted dealer
 
 ```shell
-cargo run -- generate-committee --num 3 --threshold 2 --output-dir tests/
+cargo run --bin zktbct-admin -- generate-committee --num 3 --threshold 2 --output-dir tests/
 ```
 
 ### Start a committee node 
 
 ```shell
-RUST_LOG=debug cargo run -- start-committee-node --key-path examples/committee/key-0.json --publickey-package-path examples/committee/publickey-package.json --address "127.0.0.1:8891"
+RUST_LOG=debug cargo run --bin zktbct-admin -- start-committee-node --key-path examples/committee/key-0.json --publickey-package-path examples/committee/publickey-package.json --address "127.0.0.1:8891"
 ```
 
 ### Start an orchestrator/coordinator
 
 ```shell
-RUST_LOG=debug cargo run  -- start-orchestrator --publickey-package-path examples/committee/publickey-package.json --committee-cfg-path examples/committee/committee-cfg.json --address "127.0.0.1:8891"
+RUST_LOG=debug cargo run --bin zktbct-admin  -- start-orchestrator --publickey-package-path examples/committee/publickey-package.json --committee-cfg-path examples/committee/committee-cfg.json --address "127.0.0.1:8891"
 ```
 
 then you can query it like so:
@@ -170,4 +170,4 @@ or with the unlock funds CLI command.
     * `sudo systemctl restart nginx`
 * `git clone https://github.com/sigma0-xyz/zkbitcoin`
 * `cd zkbitcoin`
-* `RUST_LOG=debug cargo run -- start-committee-node --key-path examples/committee/key-0.json --publickey-package-path examples/committee/publickey-package.json --address "127.0.0.1:8891"`
+* `RUST_LOG=debug cargo run --bin zktbct-admin -- start-committee-node --key-path examples/committee/key-0.json --publickey-package-path examples/committee/publickey-package.json --address "127.0.0.1:8891"`

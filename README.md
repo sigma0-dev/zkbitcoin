@@ -40,7 +40,7 @@ export RPC_AUTH="username:password"
 
 ### zkbtc: the zkBitcoin CLI
 
-To install `zkbtc`, run the following command:
+To install `zkbtc` and `zkbtc-admin`, run the following command:
 
 ```shell
 cargo install --git https://github.com/sigma0-xyz/zkbitcoin.git
