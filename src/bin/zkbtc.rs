@@ -142,7 +142,7 @@ async fn main() -> Result<()> {
     );
 
     // ignore if there is any error
-    let _  = version::check_version().await;
+    let _ = version::check_version().await;
 
     // parse CLI
     let cli = Cli::parse();
