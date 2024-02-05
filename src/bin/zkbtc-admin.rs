@@ -6,6 +6,7 @@ use zkbitcoin::{
     committee::orchestrator::{CommitteeConfig, Member},
     constants::{ZKBITCOIN_FEE_PUBKEY, ZKBITCOIN_PUBKEY},
     frost, taproot_addr_from,
+    utils::version,
 };
 
 #[derive(Parser)]
@@ -76,6 +77,9 @@ async fn main() -> Result<()> {
         "- zkbitcoin_fund_address: {}",
         taproot_addr_from(ZKBITCOIN_FEE_PUBKEY).unwrap().to_string()
     );
+
+    // ignore if there is any error
+    let _ = version::check_version().await;
 
     // parse CLI
     let cli = Cli::parse();
