@@ -456,7 +456,7 @@ impl BobRequest {
             )?;
 
             ensure!(
-                compliance.is_sanctioned(&addr).await,
+                !compliance.is_sanctioned(&addr).await,
                 "ZkApp input transaction address is sanctioned"
             );
         }
