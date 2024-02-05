@@ -17,7 +17,7 @@ async fn fetch_latest_version() -> Result<Release> {
 
     let release = client
         .get(RELEASES_URL)
-        .header("User-Agent", "Rust CLI")
+        .header("User-Agent", "zkbitcoin cli")
         .send()
         .await?
         .json::<Release>()
