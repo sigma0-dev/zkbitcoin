@@ -4,7 +4,7 @@ use reqwest::Client;
 use serde::Deserialize;
 use versions::Versioning;
 
-const RELEASES_URL: &str = "https://api.github.com/repos//sigma0-xyz/zkbitcoin/releases/latest";
+const RELEASES_URL: &str = "https://api.github.com/repos/sigma0-xyz/zkbitcoin/releases/latest";
 
 #[derive(Deserialize, Debug)]
 struct Release {
