@@ -1,5 +1,5 @@
 # Build the `zkbtc` binary
-FROM rust as build
+FROM rust:1.76 as build
 
 WORKDIR /app
 
@@ -18,7 +18,7 @@ RUN apt update;  \
     npm install -g snarkjs@latest
 
 ENV PATH=/root/.local/bin:$PATH
-COPY --link --from=build /app/target/release/zkbtc /usr/local/bin/
+COPY --link --from=build /app/target/release/zkbtc-admin /usr/local/bin/
 
 WORKDIR /app
 
