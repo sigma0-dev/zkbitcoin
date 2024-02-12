@@ -26,6 +26,14 @@ To install `snarkjs`, just run:
 npm install -g snarkjs@latest
 ```
 
+### Download SRS File
+
+To create a ZKP you would need to download the correct SRS file (based on your circuit size). For example, if your circuit has around 65K constraints then you would need to download the following file https://storage.googleapis.com/zkevm/ptau/powersOfTau28_hez_final_16.ptau.
+
+You can replace the number 16 in the above URL to download the correct SRS file for your circuit.
+
+> You can download the file to any location you wish. You will later provide the location of the file when running the CLI tool.
+
 ### Bitcoin wallet
 
 On top that, you'll need your own Bitcoin node/wallet. This application will perform queries to your node/wallet in order to fund your zkapp transactions.

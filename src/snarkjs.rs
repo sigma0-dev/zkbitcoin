@@ -244,6 +244,7 @@ pub fn verify_proof(
 
 #[cfg(test)]
 mod tests {
+    use crate::zkbitcoin_folder;
     use super::*;
 
     fn full_path_from(path: &Path) -> PathBuf {
@@ -254,6 +255,7 @@ mod tests {
     #[ignore]
     async fn prove_stateless() {
         let circom_circuit_path = full_path_from(Path::new("examples/circuit/stateless.circom"));
+        let srs_path = zkbitcoin_folder().join("srs_16.ptau");
         let mut proof_inputs = HashMap::new();
         proof_inputs.insert("truncated_txid".to_string(), vec!["0".to_string()]);
         proof_inputs.insert(
@@ -263,7 +265,7 @@ mod tests {
                     .to_string(),
             ],
         );
-        let (proof, full_inputs, vk) = prove(&circom_circuit_path, &proof_inputs).await.unwrap();
+        let (proof, full_inputs, vk) = prove(&circom_circuit_path, &srs_path, &proof_inputs).await.unwrap();
 
         // verify
         verify_proof(&vk, &full_inputs.0, &proof).unwrap();
