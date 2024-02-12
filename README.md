@@ -77,16 +77,20 @@ The zkapp doesn't have to do anything with the `truncated_txid` field (although 
 You can deploy a stateless zkapp with the following command:
 
 ```shell
-$ zkbtc deploy-zkapp --circom-circuit-path examples/circuit/stateless.circom --satoshi-amount 1000
+$ zkbtc deploy-zkapp --circom-circuit-path examples/circuit/stateless.circom --srs-path ~/.zkbitcoin/srs_16.ptau --satoshi-amount 1000
 ```
+
+> Use the `--srs-path` where you downloaded the SRS file. Check "Download SRS File" above.
 
 This will lock 1,000 satoshis in the zkapp and return the transaction ID of the transaction that deployed the zkapp. A stateless zkapp can be referenced by that transaction ID.
 
 Bob can then unlock the funds from the stateless zkapp with the following command:
 
 ```shell
-$ zkbtc use-zkapp --txid "e793bdd8dfdd9912d971790a5f385ad3f1215dce97e25dbefe5449faba632836" --circom-circuit-path examples/circuit/stateless.circom --proof-inputs '{"preimage":["1"]}' --recipient-address "tb1q6nkpv2j9lxrm6h3w4skrny3thswgdcca8cx9k6"
+$ zkbtc use-zkapp --txid "e793bdd8dfdd9912d971790a5f385ad3f1215dce97e25dbefe5449faba632836" --circom-circuit-path examples/circuit/stateless.circom --srs-path ~/.zkbitcoin/srs_16.ptau --proof-inputs '{"preimage":["1"]}' --recipient-address "tb1q6nkpv2j9lxrm6h3w4skrny3thswgdcca8cx9k6"
 ```
+
+> Use the `--srs-path` where you downloaded the SRS file. Check "Download SRS File" above.
 
 ### Stateful zkapps
 

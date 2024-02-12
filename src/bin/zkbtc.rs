@@ -46,7 +46,7 @@ enum Commands {
         circom_circuit_path: PathBuf,
 
         /// The path to the srs file
-        #[arg(short, long)]
+        #[arg(long)]
         srs_path: PathBuf,
 
         /// Optionally, an initial state for stateful zkapps.
@@ -89,7 +89,7 @@ enum Commands {
         circom_circuit_path: PathBuf,
 
         /// The path to the srs file
-        #[arg(short, long)]
+        #[arg(long)]
         srs_path: PathBuf,
 
         /// A JSON string of the proof inputs.
