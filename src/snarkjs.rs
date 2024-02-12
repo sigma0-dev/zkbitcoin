@@ -244,8 +244,8 @@ pub fn verify_proof(
 
 #[cfg(test)]
 mod tests {
-    use crate::zkbitcoin_folder;
     use super::*;
+    use crate::zkbitcoin_folder;
 
     fn full_path_from(path: &Path) -> PathBuf {
         PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap()).join(path)
@@ -265,7 +265,9 @@ mod tests {
                     .to_string(),
             ],
         );
-        let (proof, full_inputs, vk) = prove(&circom_circuit_path, &srs_path, &proof_inputs).await.unwrap();
+        let (proof, full_inputs, vk) = prove(&circom_circuit_path, &srs_path, &proof_inputs)
+            .await
+            .unwrap();
 
         // verify
         verify_proof(&vk, &full_inputs.0, &proof).unwrap();
@@ -294,7 +296,9 @@ mod tests {
 
         // prove
         let public_inputs = HashMap::new();
-        let (proof, full_inputs, vk) = prove(&circom_circuit_path, &srs_path, &public_inputs).await.unwrap();
+        let (proof, full_inputs, vk) = prove(&circom_circuit_path, &srs_path, &public_inputs)
+            .await
+            .unwrap();
 
         // verify
         verify_proof(&vk, &full_inputs.0, &proof).unwrap();
