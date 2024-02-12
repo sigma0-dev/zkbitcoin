@@ -110,6 +110,7 @@ impl BobRequest {
         bob_address: Address,
         txid: bitcoin::Txid, // of zkapp
         circom_circuit_path: &Path,
+        srs_path: &Path,
         mut proof_inputs: HashMap<String, Vec<String>>,
     ) -> Result<Self> {
         // fetch transaction + metadata based on txid
@@ -138,7 +139,7 @@ impl BobRequest {
 
             // prove
             let (_proof, public_inputs, _vk) =
-                snarkjs::prove(circom_circuit_path, &proof_inputs).await?;
+                snarkjs::prove(circom_circuit_path, srs_path, &proof_inputs).await?;
 
             // extract new_state
             let new_state = public_inputs
@@ -264,7 +265,8 @@ impl BobRequest {
         let truncated_txid = truncate_txid(tx.txid());
         proof_inputs.insert("truncated_txid".to_string(), vec![truncated_txid]);
 
-        let (proof, public_inputs, vk) = snarkjs::prove(circom_circuit_path, &proof_inputs).await?;
+        let (proof, public_inputs, vk) =
+            snarkjs::prove(circom_circuit_path, srs_path, &proof_inputs).await?;
         debug!(
             "- public_inputs used to create the proof: {:?}",
             public_inputs.0

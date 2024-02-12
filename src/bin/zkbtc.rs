@@ -45,6 +45,10 @@ enum Commands {
         #[arg(short, long)]
         circom_circuit_path: PathBuf,
 
+        /// The path to the srs file
+        #[arg(short, long)]
+        srs_path: PathBuf,
+
         /// Optionally, an initial state for stateful zkapps.
         #[arg(short, long)]
         initial_state: Option<String>,
@@ -83,6 +87,10 @@ enum Commands {
         /// The path to the circom circuit to use.
         #[arg(short, long)]
         circom_circuit_path: PathBuf,
+
+        /// The path to the srs file
+        #[arg(short, long)]
+        srs_path: PathBuf,
 
         /// A JSON string of the proof inputs.
         /// For stateful zkapps, we expect at least `amount_in` and `amount_out`.
@@ -151,6 +159,7 @@ async fn main() -> Result<()> {
             circom_circuit_path,
             initial_state,
             satoshi_amount,
+            srs_path,
         } => {
             let ctx = RpcCtx::new(
                 Some(BITCOIN_JSON_RPC_VERSION),
@@ -169,7 +178,7 @@ async fn main() -> Result<()> {
                     verifier_key,
                     circuit_r1cs_path: _,
                     prover_key_path: _,
-                } = snarkjs::compile(&tmp_dir, &circom_circuit_path).await?;
+                } = snarkjs::compile(&tmp_dir, &circom_circuit_path, &srs_path).await?;
                 let vk_hash = verifier_key.hash();
                 (verifier_key, vk_hash)
             };
@@ -233,6 +242,7 @@ async fn main() -> Result<()> {
             txid,
             recipient_address,
             circom_circuit_path,
+            srs_path,
             proof_inputs,
         } => {
             let rpc_ctx = RpcCtx::new(
@@ -268,6 +278,7 @@ async fn main() -> Result<()> {
                 bob_address,
                 txid,
                 &circom_circuit_path,
+                &srs_path,
                 proof_inputs,
             )
             .await?;
