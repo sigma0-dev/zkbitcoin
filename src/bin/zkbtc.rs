@@ -178,7 +178,7 @@ async fn main() -> Result<()> {
                     verifier_key,
                     circuit_r1cs_path: _,
                     prover_key_path: _,
-                } = snarkjs::compile(&tmp_dir, &circom_circuit_path, &srs_path).await?;
+                } = snarkjs::compile(&tmp_dir, &circom_circuit_path, srs_path).await?;
                 let vk_hash = verifier_key.hash();
                 (verifier_key, vk_hash)
             };
@@ -278,7 +278,7 @@ async fn main() -> Result<()> {
                 bob_address,
                 txid,
                 &circom_circuit_path,
-                &srs_path,
+                srs_path,
                 proof_inputs,
             )
             .await?;
