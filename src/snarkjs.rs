@@ -9,10 +9,7 @@ use anyhow::{bail, Context, Result};
 use log::info;
 use tempdir::TempDir;
 
-use crate::{
-    plonk::{self},
-    srs,
-};
+use crate::plonk;
 
 pub struct CompilationResult {
     pub verifier_key: plonk::VerifierKey,
@@ -21,10 +18,7 @@ pub struct CompilationResult {
 }
 
 /// Compiles a circom circuit to a wasm and r1cs file.
-pub async fn compile(tmp_dir: &TempDir, circom_circuit_path: &Path) -> Result<CompilationResult> {
-    // SRS
-    let srs_path = srs::srs_path().await;
-
+pub async fn compile(tmp_dir: &TempDir, circom_circuit_path: &Path, srs_path: &Path) -> Result<CompilationResult> {
     // set up new paths for files that will be created
     let circuit_name = circom_circuit_path
         .file_stem()
