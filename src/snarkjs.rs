@@ -279,6 +279,7 @@ mod tests {
             .join("examples")
             .join("circuit");
         let circom_circuit_path = circuit_dir.join("circuit.circom");
+        let srs_path = zkbitcoin_folder().join("srs_16.ptau");
 
         // // compile to get VK
         // let vk = {
@@ -293,7 +294,7 @@ mod tests {
 
         // prove
         let public_inputs = HashMap::new();
-        let (proof, full_inputs, vk) = prove(&circom_circuit_path, &public_inputs).await.unwrap();
+        let (proof, full_inputs, vk) = prove(&circom_circuit_path, &srs_path, &public_inputs).await.unwrap();
 
         // verify
         verify_proof(&vk, &full_inputs.0, &proof).unwrap();
