@@ -42,6 +42,9 @@ tokio = { version = "1.34", features = [
 ] }
 tokio-stream = "0.1.14"
 versions = "6.1.0"
+xml = "0.8.10"
+fancy-regex = "0.13.0"
+chrono = "0.4.33"
 
 [patch.crates-io]
 # see docs/serialization.md
