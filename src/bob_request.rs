@@ -449,7 +449,7 @@ impl BobRequest {
 
     /// Check that the zkapp input transactions are compliant
     pub async fn check_compliance(&self, compliance: Arc<Compliance>) -> Result<()> {
-        for zkapp_txin in &self.zkapp_tx.input {
+        for (index, zkapp_txin) in self.zkapp_tx.input.iter().enumerate() {
             let addr = Address::from_script(
                 &zkapp_txin.script_sig.clone().into_boxed_script(),
                 get_network(),
@@ -457,7 +457,7 @@ impl BobRequest {
 
             ensure!(
                 !compliance.is_sanctioned(&addr).await,
-                "ZkApp input transaction is sanctioned"
+                format!("ZkApp input #{index} is sanctioned"),
             );
         }
 

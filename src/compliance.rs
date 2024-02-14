@@ -12,19 +12,15 @@ use std::{
 use tokio::{spawn, sync::RwLock, task::JoinHandle, time::interval};
 use xml::reader::{EventReader, XmlEvent};
 
+#[derive(Default)]
 pub struct Compliance {
     sanctioned_addresses: Arc<RwLock<HashMap<String, bool>>>,
     last_update: Arc<RwLock<i64>>,
 }
 
-impl Default for Compliance {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl Compliance {
     const BTC_ID: &'static str = "344";
+    const TICK_INTERVAL: u64 = 600;
     const OFAC_URL: &'static str =
         "https://www.treasury.gov/ofac/downloads/sanctions/1.0/sdn_advanced.xml";
 
@@ -91,7 +87,6 @@ impl Compliance {
         }
 
         let mut last_update = last_update.write().await;
-        *last_update = publish_date;
 
         info!("Syncing sanction list...");
         let start = Instant::now();
@@ -137,6 +132,8 @@ impl Compliance {
             }
         }
 
+        *last_update = publish_date;
+
         let duration = start.elapsed();
         info!("Sanction list synced in {:?}", duration);
 
@@ -149,7 +146,7 @@ impl Compliance {
         let last_update = Arc::clone(&self.last_update);
 
         spawn(async move {
-            let mut interval = interval(Duration::from_secs(600));
+            let mut interval = interval(Duration::from_secs(Compliance::TICK_INTERVAL));
 
             loop {
                 interval.tick().await;
