@@ -5,6 +5,7 @@ use secp256k1::hashes::Hash;
 
 pub mod capped_hashmap;
 pub mod committee;
+pub mod compliance;
 pub mod constants;
 pub mod frost;
 pub mod json_rpc_stuff;

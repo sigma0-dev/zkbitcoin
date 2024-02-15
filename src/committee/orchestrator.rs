@@ -27,6 +27,7 @@ use tokio::time::sleep;
 use crate::{
     bob_request::{BobRequest, BobResponse},
     committee::node::Round1Response,
+    compliance::Compliance,
     constants::{KEEPALIVE_MAX_RETRIES, KEEPALIVE_WAIT_SECONDS, ZKBITCOIN_PUBKEY},
     frost,
     json_rpc_stuff::{json_rpc_request, RpcCtx},
@@ -268,6 +269,7 @@ pub struct Orchestrator {
     pub pubkey_package: frost_secp256k1_tr::keys::PublicKeyPackage,
     pub committee_cfg: CommitteeConfig,
     pub member_status: Arc<RwLock<MemberStatusState>>,
+    compliance: Arc<Compliance>,
 }
 
 impl Orchestrator {
@@ -275,17 +277,22 @@ impl Orchestrator {
         pubkey_package: frost_secp256k1_tr::keys::PublicKeyPackage,
         committee_cfg: CommitteeConfig,
         member_status: Arc<RwLock<MemberStatusState>>,
+        compliance: Arc<Compliance>,
     ) -> Self {
         Self {
             pubkey_package,
             committee_cfg,
             member_status,
+            compliance,
         }
     }
 
     /// Handles bob request from A to Z.
     pub async fn handle_request(&self, bob_request: &BobRequest) -> Result<BobResponse> {
         // Validate transaction before forwarding it, and get smart contract
+        bob_request
+            .check_compliance(Arc::clone(&self.compliance))
+            .await?;
         let smart_contract = bob_request.validate_request().await?;
 
         // TODO: we might want to check that the zkapp/UTXO is unspent here, but this requires us to have access to a bitcoin node, so for now we don't do it :o)
@@ -567,15 +574,26 @@ pub async fn run_server(
     let address = address.unwrap_or("127.0.0.1:6666");
     info!("- starting orchestrator at address http://{address}");
 
+    let mut compliance = Compliance::new();
+    // Orchestrator should sync the sanction list before doing anything else
+    compliance.sync().await.expect("sync sanction list");
+
+    // wrap in an Arc after the first sync so it can be used in multiple request contexts
+    let compliance: Arc<Compliance> = Arc::new(compliance);
+
     let member_status_state = Arc::new(RwLock::new(MemberStatusState::new(&committee_cfg).await));
     let mss_thread_copy = member_status_state.clone();
     tokio::spawn(async move { MemberStatusState::keepalive_thread(mss_thread_copy).await });
 
-    let ctx = Orchestrator {
+    let ctx = Orchestrator::new(
         pubkey_package,
         committee_cfg,
-        member_status: member_status_state,
-    };
+        member_status_state,
+        Arc::clone(&compliance),
+    );
+
+    // Sync sanction list in a parallel thread
+    compliance.start();
 
     let server = Server::builder()
         .build(address.parse::<SocketAddr>()?)

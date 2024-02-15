@@ -1,4 +1,4 @@
-use std::{collections::HashMap, path::Path, str::FromStr, vec};
+use std::{collections::HashMap, path::Path, str::FromStr, sync::Arc, vec};
 
 use anyhow::{bail, ensure, Context, Result};
 use bitcoin::{
@@ -11,10 +11,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     circom_field_from_bytes, circom_field_to_bytes,
+    compliance::Compliance,
     constants::{
         FEE_ZKBITCOIN_SAT, MINIMUM_CONFIRMATIONS, STATEFUL_ZKAPP_PUBLIC_INPUT_LEN,
         ZKBITCOIN_FEE_PUBKEY, ZKBITCOIN_PUBKEY,
     },
+    get_network,
     json_rpc_stuff::{
         createrawtransaction, fund_raw_transaction, get_transaction, json_rpc_request,
         TransactionOrHex,
@@ -444,6 +446,23 @@ impl BobRequest {
         }
 
         //
+        Ok(())
+    }
+
+    /// Check that the zkapp input transactions are compliant
+    pub async fn check_compliance(&self, compliance: Arc<Compliance>) -> Result<()> {
+        for (index, zkapp_txin) in self.zkapp_tx.input.iter().enumerate() {
+            let addr = Address::from_script(
+                &zkapp_txin.script_sig.clone().into_boxed_script(),
+                get_network(),
+            )?;
+
+            ensure!(
+                !compliance.is_sanctioned(&addr).await,
+                format!("ZkApp input #{index} is sanctioned"),
+            );
+        }
+
         Ok(())
     }
 
