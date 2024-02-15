@@ -575,7 +575,7 @@ pub async fn run_server(
     info!("- starting orchestrator at address http://{address}");
 
     let mut compliance = Compliance::new();
-    // Orchestrator should sync the Sanction ist before doing anything else
+    // Orchestrator should sync the sanction list before doing anything else
     compliance.sync().await.expect("sync sanction list");
 
     // wrap in an Arc after the first sync so it can be used in multiple request contexts
