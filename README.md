@@ -55,14 +55,8 @@ There are two types of zkapps: [stateless](#stateless-zkapps) and [stateful](#st
 A stateless zkapp is single-use, and the bitcoin it locks can be redeemed by anyone who can provide a proof of correct execution. An example of a stateless zkapp is in [`examples/circuit/stateless.circom`](examples/circuit/stateless.circom) (which releases funds to anyone who can find the preimage of a hash function).
 A stateless zkapp must always contains one public input that authenticates the transaction that spends it:
 
-```circom
-// circom code
-template Main() {
-    signal input truncated_txid;
-    // TRUNCATED...
-}
-component main{public [truncated_txid]} = Main();
-```
+![carbon (2)](https://github.com/sigma0-xyz/zkbitcoin/assets/1316043/f1ea22e2-f02e-4244-aeb2-fcf2d4fb6dd5)
+
 
 The zkapp doesn't have to do anything with the `truncated_txid` field (although it can if it wants to).
 
@@ -86,18 +80,7 @@ A stateful zkapp is a zkapp that has a state, and which state can be updated wit
 
 An example of a stateful zkapp is in [`examples/circuit/stateful.circom`](examples/circuit/stateful.circom). A stateful zkapp must always contains a number of additional public inputs, allowing an execution to authenticate the zkapp state transition, as well as the amounts being withdrawn and deposited:
 
-```circom
-// circom code
-template Main() {
-    signal output new_state;
-    signal input prev_state;
-    signal input truncated_txid; // this should not affect output
-    signal input amount_out;
-    signal input amount_in;
-    // TRUNCATED...
-}
-component main{public [prev_state, truncated_txid, amount_out, amount_in]} = Main();
-```
+![carbon (3)](https://github.com/sigma0-xyz/zkbitcoin/assets/1316043/60f47c51-8d17-46c3-a697-21a38446424e)
 
 You can deploy a stateful zkapp with the following command:
 
