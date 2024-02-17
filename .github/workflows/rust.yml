@@ -24,13 +24,12 @@ jobs:
       #
 
       - name: Checkout PR
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Set up cargo/rust
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-          toolchain: "1.76.0"
           components: rustfmt, clippy
 
       # https://github.com/Swatinem/rust-cache
