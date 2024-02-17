@@ -49,13 +49,13 @@ sudo ufw allow 8891
 1. Fetch the image:
 
 ```shell
-docker pull imikushin/zkbitcoin
+docker pull ghcr.io/sigma0-xyz/zkbitcoin:release
 ```
 
 2. Create the zkBitcoin node container (creates the `keys` Docker volume if you don't already have it):
 
 ```shell
-docker create --restart=always -v keys:/keys --name zkbtc-node -p 8891:8891 imikushin/zkbitcoin \
+docker create --restart=always -v keys:/keys --name zkbtc-node -p 8891:8891 ghcr.io/sigma0-xyz/zkbitcoin:release \
   zkbtc-admin start-committee-node \
   --key-path=/keys/key.json --publickey-package-path=/keys/publickey-package.json \
   --address=0.0.0.0:8891
@@ -77,8 +77,8 @@ docker start zkbtc-node
 You should now see the container show up in the printout from running the `docker ps -a` shell command:
 
 ```
-CONTAINER ID   IMAGE                 COMMAND                  CREATED             STATUS          PORTS                    NAMES
-b3d2e7c028ce   imikushin/zkbitcoin   "zkbtc start-committ…"   About an hour ago   Up 55 minutes   0.0.0.0:8891->8891/tcp   zkbtc-node
+CONTAINER ID   IMAGE                                  COMMAND                  CREATED          STATUS          PORTS                    NAMES
+ffe4f33e2650   ghcr.io/sigma0-xyz/zkbitcoin:release   "zkbtc-admin start-c…"   31 seconds ago   Up 24 seconds   0.0.0.0:8891->8891/tcp   zkbtc-node
 ```
 
 Follow its logs with `docker logs -f zkbtc-node`:
@@ -102,7 +102,7 @@ curl -X POST http://${SERVER_IP}:8891 -H 'Content-Type: application/json' -d '{"
 ### Updating the MPC node software
 
 ```shell
-docker pull imikushin/zkbitcoin
+docker pull ghcr.io/sigma0-xyz/zkbitcoin:release
 docker rm -f zkbtc-node
 ```
 
