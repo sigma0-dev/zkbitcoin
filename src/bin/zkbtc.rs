@@ -299,9 +299,8 @@ async fn deploy_zkapp(
     }
 
     // generate and broadcast deploy transaction
-    let txid =
-        generate_and_broadcast_transaction(&rpc_ctx, &vk_hash, initial_state, satoshi_amount)
-            .await?;
+    let txid = generate_and_broadcast_transaction(rpc_ctx, &vk_hash, initial_state, satoshi_amount)
+        .await?;
 
     info!("- txid broadcast to the network: {txid}");
     info!("- on an explorer: https://blockstream.info/testnet/tx/{txid}");
@@ -335,7 +334,7 @@ async fn use_zkapp(
 
     // create bob request
     let bob_request = BobRequest::new(
-        &rpc_ctx,
+        rpc_ctx,
         bob_address,
         txid,
         &circom_circuit_path,
@@ -351,13 +350,13 @@ async fn use_zkapp(
 
     // sign it
     let (signed_tx_hex, _signed_tx) = sign_transaction(
-        &rpc_ctx,
+        rpc_ctx,
         TransactionOrHex::Transaction(&bob_response.unlocked_tx),
     )
     .await?;
 
     // broadcast transaction
-    let txid = send_raw_transaction(&rpc_ctx, TransactionOrHex::Hex(signed_tx_hex)).await?;
+    let txid = send_raw_transaction(rpc_ctx, TransactionOrHex::Hex(signed_tx_hex)).await?;
 
     // print useful msg
     info!("- txid broadcast to the network: {txid}");
