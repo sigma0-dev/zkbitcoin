@@ -8,7 +8,7 @@ const RELEASES_URL: &str = "https://api.github.com/repos/sigma0-xyz/zkbitcoin/re
 
 #[derive(Deserialize, Debug)]
 struct Release {
-    url: String,
+    html_url: String,
     tag_name: String,
 }
 
@@ -34,7 +34,7 @@ pub async fn check_version() -> Result<()> {
     if current_version < latest_version {
         warn!(
             "You are using an old version. Please download the latest version: {}",
-            latest_release.url
+            latest_release.html_url
         )
     }
 
