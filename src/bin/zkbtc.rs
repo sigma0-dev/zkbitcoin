@@ -2,7 +2,12 @@ use anyhow::{ensure, Context, Result};
 use bitcoin::{Address, Txid};
 use clap::{Parser, Subcommand};
 use log::info;
-use std::{collections::HashMap, env, path::{Path, PathBuf}, str::FromStr};
+use std::{
+    collections::HashMap,
+    env,
+    path::{Path, PathBuf},
+    str::FromStr,
+};
 use tempdir::TempDir;
 use zkbitcoin::{
     alice_sign_tx::generate_and_broadcast_transaction,
