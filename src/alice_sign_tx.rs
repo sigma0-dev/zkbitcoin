@@ -16,7 +16,7 @@ use crate::{op_return_script_for, p2tr_script_to};
 pub async fn generate_and_broadcast_transaction(
     ctx: &RpcCtx,
     vk_hash: &[u8; 32],
-    initial_state: Option<&String>,
+    initial_state: Option<&str>,
     satoshi_amount: u64,
 ) -> Result<bitcoin::Txid> {
     // 1. create transaction based on VK + amount

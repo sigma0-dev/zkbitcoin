@@ -16,6 +16,7 @@ use zkbitcoin::{
     },
     snarkjs::{self, CompilationResult},
     taproot_addr_from,
+    utils::version,
 };
 
 #[derive(Parser)]
@@ -148,6 +149,9 @@ async fn main() -> Result<()> {
         taproot_addr_from(ZKBITCOIN_FEE_PUBKEY).unwrap().to_string()
     );
 
+    // ignore if there is any error
+    let _ = version::check_version().await;
+
     // parse CLI
     let cli = Cli::parse();
     match &cli.command {
@@ -161,76 +165,22 @@ async fn main() -> Result<()> {
             satoshi_amount,
             srs_path,
         } => {
-            let ctx = RpcCtx::new(
+            let rpc_ctx = RpcCtx::new(
                 Some(BITCOIN_JSON_RPC_VERSION),
                 wallet.clone(),
                 address.clone(),
                 auth.clone(),
                 None,
             );
-
             let circom_circuit_path = env::current_dir()?.join(circom_circuit_path);
-
-            // compile to get VK (and its digest)
-            let (vk, vk_hash) = {
-                let tmp_dir = TempDir::new("zkbitcoin_").context("couldn't create tmp dir")?;
-                let CompilationResult {
-                    verifier_key,
-                    circuit_r1cs_path: _,
-                    prover_key_path: _,
-                } = snarkjs::compile(&tmp_dir, &circom_circuit_path, srs_path).await?;
-                let vk_hash = verifier_key.hash();
-                (verifier_key, vk_hash)
-            };
-
-            // sanity check
-            let num_public_inputs = vk.nPublic;
-            ensure!(
-                num_public_inputs > 0,
-                "the circuit must have at least one public input (the txid)"
-            );
-
-            info!(
-                "deploying circuit {} with {num_public_inputs} public inputs",
-                hex::encode(vk_hash)
-            );
-
-            // sanity check for stateful zkapps
-            if num_public_inputs > 1 {
-                let double_state_len = vk.nPublic - 3; /* txid, amount_in, amount_out */
-                let state_len = double_state_len.checked_div(2).context("the VK")?;
-                {
-                    // TODO: does checked_div errors if its not a perfect division?
-                    assert_eq!(state_len * 2, double_state_len);
-                }
-
-                // for now we only state of a single element
-                ensure!(
-                    state_len == 1,
-                    "we only allow states of a single field element"
-                );
-
-                // check that the circuit makes sense for a stateful zkapp
-                ensure!(num_public_inputs == 3 /* txid, amount_in, amount_out */ + state_len * 2, "the circuit passed does not expect the right number of public inputs for a stateful zkapp");
-
-                // parse initial state
-                ensure!(
-                    initial_state.is_some(),
-                    "an initial state should be passed for a stateful zkapp"
-                );
-            }
-
-            // generate and broadcast deploy transaction
-            let txid = generate_and_broadcast_transaction(
-                &ctx,
-                &vk_hash,
-                initial_state.as_ref(),
+            deploy_zkapp(
+                &rpc_ctx,
+                circom_circuit_path,
+                srs_path,
+                initial_state.as_deref(),
                 *satoshi_amount,
             )
             .await?;
-
-            info!("- txid broadcast to the network: {txid}");
-            info!("- on an explorer: https://blockstream.info/testnet/tx/{txid}");
         }
 
         // Bob's command
@@ -252,58 +202,17 @@ async fn main() -> Result<()> {
                 auth.clone(),
                 None,
             );
-
-            // parse circom circuit path
             let circom_circuit_path = env::current_dir()?.join(circom_circuit_path);
-
-            // parse proof inputs
-            let proof_inputs: HashMap<String, Vec<String>> = if let Some(s) = &proof_inputs {
-                serde_json::from_str(s)?
-            } else {
-                HashMap::new()
-            };
-
-            // parse Bob address
-            let bob_address = Address::from_str(recipient_address)
-                .unwrap()
-                .require_network(get_network())
-                .unwrap();
-
-            // parse transaction ID
-            let txid = Txid::from_str(txid)?;
-
-            // create bob request
-            let bob_request = BobRequest::new(
+            use_zkapp(
                 &rpc_ctx,
-                bob_address,
+                orchestrator_address.as_deref(),
                 txid,
-                &circom_circuit_path,
+                recipient_address,
+                circom_circuit_path,
                 srs_path,
-                proof_inputs,
+                proof_inputs.as_deref(),
             )
             .await?;
-
-            // send bob's request to the orchestartor.
-            let address = orchestrator_address
-                .as_deref()
-                .unwrap_or(ORCHESTRATOR_ADDRESS);
-            let bob_response = send_bob_request(address, bob_request)
-                .await
-                .context("error while sending request to orchestrator")?;
-
-            // sign it
-            let (signed_tx_hex, _signed_tx) = sign_transaction(
-                &rpc_ctx,
-                TransactionOrHex::Transaction(&bob_response.unlocked_tx),
-            )
-            .await?;
-
-            // broadcast transaction
-            let txid = send_raw_transaction(&rpc_ctx, TransactionOrHex::Hex(signed_tx_hex)).await?;
-
-            // print useful msg
-            info!("- txid broadcast to the network: {txid}");
-            info!("- on an explorer: https://blockstream.info/testnet/tx/{txid}");
         }
 
         Commands::GetZkapp {
@@ -312,17 +221,14 @@ async fn main() -> Result<()> {
             auth,
             txid,
         } => {
-            let ctx = RpcCtx::new(
+            let rpc_ctx = RpcCtx::new(
                 Some(BITCOIN_JSON_RPC_VERSION),
                 wallet.clone(),
                 address.clone(),
                 auth.clone(),
                 None,
             );
-
-            // extract smart contract
-            let zkapp = fetch_smart_contract(&ctx, Txid::from_str(txid)?).await?;
-
+            let zkapp = fetch_smart_contract(&rpc_ctx, Txid::from_str(txid)?).await?;
             println!("{zkapp}");
         }
 
@@ -350,5 +256,129 @@ async fn main() -> Result<()> {
         }
     }
 
+    Ok(())
+}
+
+async fn deploy_zkapp(
+    rpc_ctx: &RpcCtx,
+    circom_circuit_path: PathBuf,
+    srs_path: PathBuf,
+    initial_state: Option<&str>,
+    satoshi_amount: u64,
+) -> Result<()> {
+    // compile to get VK (and its digest)
+    let (vk, vk_hash) = {
+        let tmp_dir = TempDir::new("zkbitcoin_").context("couldn't create tmp dir")?;
+        let CompilationResult {
+            verifier_key,
+            circuit_r1cs_path: _,
+            prover_key_path: _,
+        } = snarkjs::compile(&tmp_dir, &circom_circuit_path, &srs_path).await?;
+        let vk_hash = verifier_key.hash();
+        (verifier_key, vk_hash)
+    };
+
+    // sanity check
+    let num_public_inputs = vk.nPublic;
+    ensure!(
+        num_public_inputs > 0,
+        "the circuit must have at least one public input (the txid)"
+    );
+
+    info!(
+        "deploying circuit {} with {num_public_inputs} public inputs",
+        hex::encode(vk_hash)
+    );
+
+    // sanity check for stateful zkapps
+    if num_public_inputs > 1 {
+        let double_state_len = vk.nPublic - 3; /* txid, amount_in, amount_out */
+        let state_len = double_state_len.checked_div(2).context("the VK")?;
+        {
+            // TODO: does checked_div errors if its not a perfect division?
+            assert_eq!(state_len * 2, double_state_len);
+        }
+
+        // for now we only state of a single element
+        ensure!(
+            state_len == 1,
+            "we only allow states of a single field element"
+        );
+
+        // check that the circuit makes sense for a stateful zkapp
+        ensure!(num_public_inputs == 3 /* txid, amount_in, amount_out */ + state_len * 2, "the circuit passed does not expect the right number of public inputs for a stateful zkapp");
+
+        // parse initial state
+        ensure!(
+            initial_state.is_some(),
+            "an initial state should be passed for a stateful zkapp"
+        );
+    }
+
+    // generate and broadcast deploy transaction
+    let txid = generate_and_broadcast_transaction(rpc_ctx, &vk_hash, initial_state, satoshi_amount)
+        .await?;
+
+    info!("- txid broadcast to the network: {txid}");
+    info!("- on an explorer: https://blockstream.info/testnet/tx/{txid}");
+
+    Ok(())
+}
+
+async fn use_zkapp(
+    rpc_ctx: &RpcCtx,
+    orchestrator_address: Option<&str>,
+    txid: &str,
+    recipient_address: &str,
+    circom_circuit_path: PathBuf,
+    srs_path: PathBuf,
+    proof_inputs: Option<&str>,
+) -> Result<()> {
+    // parse proof inputs
+    let proof_inputs: HashMap<String, Vec<String>> = if let Some(s) = &proof_inputs {
+        serde_json::from_str(s)?
+    } else {
+        HashMap::new()
+    };
+
+    // parse Bob address
+    let bob_address = Address::from_str(recipient_address)
+        .unwrap()
+        .require_network(get_network())
+        .unwrap();
+
+    // parse transaction ID
+    let txid = Txid::from_str(txid)?;
+
+    // create bob request
+    let bob_request = BobRequest::new(
+        rpc_ctx,
+        bob_address,
+        txid,
+        &circom_circuit_path,
+        &srs_path,
+        proof_inputs,
+    )
+    .await?;
+
+    // send bob's request to the orchestartor.
+    let address = orchestrator_address.unwrap_or(ORCHESTRATOR_ADDRESS);
+    let bob_response = send_bob_request(address, bob_request)
+        .await
+        .context("error while sending request to orchestrator")?;
+
+    // sign it
+    let (signed_tx_hex, _signed_tx) = sign_transaction(
+        rpc_ctx,
+        TransactionOrHex::Transaction(&bob_response.unlocked_tx),
+    )
+    .await?;
+
+    // broadcast transaction
+    let txid = send_raw_transaction(rpc_ctx, TransactionOrHex::Hex(signed_tx_hex)).await?;
+
+    // print useful msg
+    info!("- txid broadcast to the network: {txid}");
+    info!("- on an explorer: https://blockstream.info/testnet/tx/{txid}");
     Ok(())
 }

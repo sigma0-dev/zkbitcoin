@@ -11,6 +11,7 @@ pub mod frost;
 pub mod json_rpc_stuff;
 pub mod plonk;
 pub mod snarkjs;
+pub mod utils;
 
 /// 1. Alice signs a transaction to deploy a smart contract.
 pub mod alice_sign_tx;
@@ -96,7 +97,7 @@ pub fn circom_field_from_bytes(bytes: &[u8]) -> anyhow::Result<String> {
 
 pub fn op_return_script_for(
     vk_hash: &[u8; 32],
-    initial_state: Option<&String>,
+    initial_state: Option<&str>,
 ) -> anyhow::Result<bitcoin::ScriptBuf> {
     let mut data = vk_hash.to_vec();
     if let Some(initial_state) = initial_state {
