@@ -1,10 +1,10 @@
 # Build the `zkbtc` binary
-FROM rust:1.76 as build
+FROM rust as build
 
 WORKDIR /app
 
 COPY ./src ./src
-COPY Cargo.* .
+COPY Cargo.* rust-toolchain.toml ./
 
 RUN cargo build --release
 
