@@ -2,7 +2,7 @@ use anyhow::{ensure, Context, Result};
 use bitcoin::{Address, Txid};
 use clap::{Parser, Subcommand};
 use log::info;
-use std::{collections::HashMap, env, path::PathBuf, str::FromStr};
+use std::{collections::HashMap, env, path::{Path, PathBuf}, str::FromStr};
 use tempdir::TempDir;
 use zkbitcoin::{
     alice_sign_tx::generate_and_broadcast_transaction,
@@ -262,7 +262,7 @@ async fn main() -> Result<()> {
 async fn deploy_zkapp(
     rpc_ctx: &RpcCtx,
     circom_circuit_path: PathBuf,
-    srs_path: PathBuf,
+    srs_path: &Path,
     initial_state: Option<&str>,
     satoshi_amount: u64,
 ) -> Result<()> {
@@ -273,7 +273,7 @@ async fn deploy_zkapp(
             verifier_key,
             circuit_r1cs_path: _,
             prover_key_path: _,
-        } = snarkjs::compile(&tmp_dir, &circom_circuit_path, &srs_path).await?;
+        } = snarkjs::compile(&tmp_dir, &circom_circuit_path, srs_path).await?;
         let vk_hash = verifier_key.hash();
         (verifier_key, vk_hash)
     };
@@ -331,7 +331,7 @@ async fn use_zkapp(
     txid: &str,
     recipient_address: &str,
     circom_circuit_path: PathBuf,
-    srs_path: PathBuf,
+    srs_path: &Path,
     proof_inputs: Option<&str>,
 ) -> Result<()> {
     // parse proof inputs
@@ -356,7 +356,7 @@ async fn use_zkapp(
         bob_address,
         txid,
         &circom_circuit_path,
-        &srs_path,
+        srs_path,
         proof_inputs,
     )
     .await?;
