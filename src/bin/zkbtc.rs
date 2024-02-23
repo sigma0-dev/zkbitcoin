@@ -2,7 +2,12 @@ use anyhow::{ensure, Context, Result};
 use bitcoin::{Address, Txid};
 use clap::{Parser, Subcommand};
 use log::info;
-use std::{collections::HashMap, env, path::PathBuf, str::FromStr};
+use std::{
+    collections::HashMap,
+    env,
+    path::{Path, PathBuf},
+    str::FromStr,
+};
 use tempdir::TempDir;
 use zkbitcoin::{
     alice_sign_tx::generate_and_broadcast_transaction,
@@ -46,6 +51,10 @@ enum Commands {
         #[arg(short, long)]
         circom_circuit_path: PathBuf,
 
+        /// The path to the srs file
+        #[arg(long)]
+        srs_path: PathBuf,
+
         /// Optionally, an initial state for stateful zkapps.
         #[arg(short, long)]
         initial_state: Option<String>,
@@ -84,6 +93,10 @@ enum Commands {
         /// The path to the circom circuit to use.
         #[arg(short, long)]
         circom_circuit_path: PathBuf,
+
+        /// The path to the srs file
+        #[arg(long)]
+        srs_path: PathBuf,
 
         /// A JSON string of the proof inputs.
         /// For stateful zkapps, we expect at least `amount_in` and `amount_out`.
@@ -155,6 +168,7 @@ async fn main() -> Result<()> {
             circom_circuit_path,
             initial_state,
             satoshi_amount,
+            srs_path,
         } => {
             let rpc_ctx = RpcCtx::new(
                 Some(BITCOIN_JSON_RPC_VERSION),
@@ -167,6 +181,7 @@ async fn main() -> Result<()> {
             deploy_zkapp(
                 &rpc_ctx,
                 circom_circuit_path,
+                srs_path,
                 initial_state.as_deref(),
                 *satoshi_amount,
             )
@@ -182,6 +197,7 @@ async fn main() -> Result<()> {
             txid,
             recipient_address,
             circom_circuit_path,
+            srs_path,
             proof_inputs,
         } => {
             let rpc_ctx = RpcCtx::new(
@@ -198,6 +214,7 @@ async fn main() -> Result<()> {
                 txid,
                 recipient_address,
                 circom_circuit_path,
+                srs_path,
                 proof_inputs.as_deref(),
             )
             .await?;
@@ -250,6 +267,7 @@ async fn main() -> Result<()> {
 async fn deploy_zkapp(
     rpc_ctx: &RpcCtx,
     circom_circuit_path: PathBuf,
+    srs_path: &Path,
     initial_state: Option<&str>,
     satoshi_amount: u64,
 ) -> Result<()> {
@@ -260,7 +278,7 @@ async fn deploy_zkapp(
             verifier_key,
             circuit_r1cs_path: _,
             prover_key_path: _,
-        } = snarkjs::compile(&tmp_dir, &circom_circuit_path).await?;
+        } = snarkjs::compile(&tmp_dir, &circom_circuit_path, srs_path).await?;
         let vk_hash = verifier_key.hash();
         (verifier_key, vk_hash)
     };
@@ -318,6 +336,7 @@ async fn use_zkapp(
     txid: &str,
     recipient_address: &str,
     circom_circuit_path: PathBuf,
+    srs_path: &Path,
     proof_inputs: Option<&str>,
 ) -> Result<()> {
     // parse proof inputs
@@ -342,6 +361,7 @@ async fn use_zkapp(
         bob_address,
         txid,
         &circom_circuit_path,
+        srs_path,
         proof_inputs,
     )
     .await?;

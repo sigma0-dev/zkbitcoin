@@ -9,10 +9,7 @@ use anyhow::{bail, Context, Result};
 use log::info;
 use tempdir::TempDir;
 
-use crate::{
-    plonk::{self},
-    srs,
-};
+use crate::plonk;
 
 pub struct CompilationResult {
     pub verifier_key: plonk::VerifierKey,
@@ -21,10 +18,11 @@ pub struct CompilationResult {
 }
 
 /// Compiles a circom circuit to a wasm and r1cs file.
-pub async fn compile(tmp_dir: &TempDir, circom_circuit_path: &Path) -> Result<CompilationResult> {
-    // SRS
-    let srs_path = srs::srs_path().await;
-
+pub async fn compile(
+    tmp_dir: &TempDir,
+    circom_circuit_path: &Path,
+    srs_path: &Path,
+) -> Result<CompilationResult> {
     // set up new paths for files that will be created
     let circuit_name = circom_circuit_path
         .file_stem()
@@ -113,6 +111,7 @@ pub async fn compile(tmp_dir: &TempDir, circom_circuit_path: &Path) -> Result<Co
 // perhaps I can just use snarkjs as a library directly?
 pub async fn prove(
     circom_circuit_path: &Path,
+    srs_path: &Path,
     proof_inputs: &HashMap<String, Vec<String>>,
 ) -> Result<(plonk::Proof, plonk::PublicInputs, plonk::VerifierKey)> {
     // create tmp dir
@@ -123,7 +122,7 @@ pub async fn prove(
         verifier_key,
         circuit_r1cs_path: _,
         prover_key_path,
-    } = compile(&tmp_dir, circom_circuit_path).await?;
+    } = compile(&tmp_dir, circom_circuit_path, srs_path).await?;
 
     // write inputs to file
     let public_inputs_path = tmp_dir.path().join("proof_inputs.json");
@@ -246,6 +245,7 @@ pub fn verify_proof(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::zkbitcoin_folder;
 
     fn full_path_from(path: &Path) -> PathBuf {
         PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap()).join(path)
@@ -255,6 +255,7 @@ mod tests {
     #[ignore]
     async fn prove_stateless() {
         let circom_circuit_path = full_path_from(Path::new("examples/circuit/stateless.circom"));
+        let srs_path = zkbitcoin_folder().join("srs_16.ptau");
         let mut proof_inputs = HashMap::new();
         proof_inputs.insert("truncated_txid".to_string(), vec!["0".to_string()]);
         proof_inputs.insert(
@@ -264,7 +265,9 @@ mod tests {
                     .to_string(),
             ],
         );
-        let (proof, full_inputs, vk) = prove(&circom_circuit_path, &proof_inputs).await.unwrap();
+        let (proof, full_inputs, vk) = prove(&circom_circuit_path, &srs_path, &proof_inputs)
+            .await
+            .unwrap();
 
         // verify
         verify_proof(&vk, &full_inputs.0, &proof).unwrap();
@@ -278,6 +281,7 @@ mod tests {
             .join("examples")
             .join("circuit");
         let circom_circuit_path = circuit_dir.join("circuit.circom");
+        let srs_path = zkbitcoin_folder().join("srs_16.ptau");
 
         // // compile to get VK
         // let vk = {
@@ -292,7 +296,9 @@ mod tests {
 
         // prove
         let public_inputs = HashMap::new();
-        let (proof, full_inputs, vk) = prove(&circom_circuit_path, &public_inputs).await.unwrap();
+        let (proof, full_inputs, vk) = prove(&circom_circuit_path, &srs_path, &public_inputs)
+            .await
+            .unwrap();
 
         // verify
         verify_proof(&vk, &full_inputs.0, &proof).unwrap();
