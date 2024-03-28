@@ -1,4 +1,4 @@
-# zkBIP-001: Tokens As Data in Apps (TADA  🎉)
+# zkBIP-001: Tokens as Data in Apps (TaDA  🎉)
 
 We propose a change to zkBitcoin so that a zkapp instance (UTXO) could fit in a single Bitcoin UTXO, utilizing Taproot capabilities. A single transaction will be able to spend and/or create multiple zkapp UTXOs. We also propose transaction-level validation predicates. This will allow for more expressive zkapps and zkapp composability.
 
