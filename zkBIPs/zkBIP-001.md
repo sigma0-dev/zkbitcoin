@@ -87,11 +87,15 @@ In order to verify the transaction, each MPC node:
 Upon successful verification, the MPC node produces its share of the user transaction signature and returns it back to the client.
 
 ### Tokens
-Tokens are represented by "special" validation predicates called *token policies*. "Special" in quotes because there's in fact nothing special about them: they work exactly the same as other validation predicates. Token amounts are simply numeric state values corresponding to these predicates in zkapp UTXOs.
+Tokens are represented by special validation predicates called *token policies*. They are special in that they are **necessarily satisfied** by transactions **where** $\sum amount_{in} = \sum amount_{out}$, i.e. *the total amount of the token in spent outputs equals the total amount of the token in created outputs*. They work exactly the same as other validation predicates otherwise. Token amounts are simply positive integer state values corresponding to these predicates in zkapp UTXOs.
 
-What is special is what they do: they maintain the integrity of token quantities participating in transactions. And since tokens are at the core of digital asset economies, these predicates indeed deserve a special name.
+The purpose of token policies is to maintain integrity of token quantities participating in transactions. Since tokens are at the core of digital asset economies, these predicates indeed deserve a special name.
 
-Tokens can be minted in a controlled way, by providing a proof of using some secret value as a witness when creating the evaluation proof of the token policy.
+Because of this property (satisfied when token quantity is preserved), a very useful optimization can be applied: we don't need the proof of its evaluation if we know for sure the total amounts of the token are equal between transactions inputs and outputs.
+
+For this to work, we need to tag such validation predicate VKs in a special way. (TODO: propose a way of tagging token policy VKs).
+
+Of course, when total amounts *are* different, we do need the proof, so tokens can be minted and burned in a controlled way. For example, by using some secret value as a witness.
 
 Tokens cannot be created out of thin air, since to validate a transaction involving zkapps, the user must provide signed transactions producing any zkapps being spent.
 
