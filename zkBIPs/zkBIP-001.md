@@ -1,6 +1,7 @@
 ---
 zkBIP: 001
 Title: Tokens as App Data (ToAD 🐸)
+Discussion: https://github.com/sigma0-xyz/zkbitcoin/discussions/49
 Status: Proposed
 Category: Ledger
 Authors:
