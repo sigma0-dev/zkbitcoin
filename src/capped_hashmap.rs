@@ -64,14 +64,12 @@ where
 
     /// Removes a key from the map, returning the value at the key if the key was previously in the map.
     pub fn remove(&mut self, k: &K) -> Option<V> {
-        let v = self.inner.remove(k)?;
-
         self.last_items
             .iter()
             .position(|key| key == k)
             .and_then(|pos| self.last_items.remove(pos));
 
-        Some(v)
+        self.inner.remove(k)
     }
 
     /// Returns a reference to the value corresponding to the key.
