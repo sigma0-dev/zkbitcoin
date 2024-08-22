@@ -64,9 +64,7 @@ where
 
     /// Removes a key from the map, returning the value at the key if the key was previously in the map.
     pub fn remove(&mut self, k: &K) -> Option<V> {
-        let Some(v) = self.inner.remove(k) else {
-            return None;
-        };
+        let v = self.inner.remove(k)?;
 
         self.last_items
             .iter()

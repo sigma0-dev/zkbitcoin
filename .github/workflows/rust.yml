@@ -38,7 +38,7 @@ jobs:
 
           docker run -d --rm \
             --name bitcoind \
-            -p 18443:18443 lncm/bitcoind:v26.0 \
+            -p 18443:18443 lncm/bitcoind:v27.0 \
             -chain=regtest \
             -rpcuser=hello -rpcpassword=world \
             -rpcbind=0.0.0.0 -rpcallowip=0.0.0.0/0 \
